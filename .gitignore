@@ -2,6 +2,7 @@
 *.exe
 *.pdb
 *.dll
+*.zip
 
 # editor / os junk
 .vs/
@@ -10,3 +11,6 @@
 *.user
 Thumbs.db
 desktop.ini
+
+# website
+html/

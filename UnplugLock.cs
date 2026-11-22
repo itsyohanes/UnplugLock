@@ -1085,6 +1085,48 @@ namespace UnplugLock
         }
     }
 
+    // Locking does nothing useful if the Windows account has no password - the lock screen
+    // just has a "Sign in" button. Only local accounts can be blank; domain, Entra and
+    // Microsoft accounts always have one.
+    internal static class WindowsSignIn
+    {
+        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern bool LogonUser(string user, string domain, string password,
+            int logonType, int provider, out IntPtr token);
+
+        [DllImport("kernel32.dll")]
+        private static extern bool CloseHandle(IntPtr handle);
+
+        private const int LogonNetwork = 3;
+        private const int ProviderDefault = 0;
+        // blank passwords are only allowed at the console, so a non-console logon with one fails like this
+        private const int ErrorAccountRestriction = 1327;
+
+        public const string SettingsPage = "ms-settings:signinoptions";
+
+        // Tries an empty password for the current user. On an account that has a password this
+        // is one failed logon, so only call it at startup or while we already think it's blank.
+        public static bool HasNoPassword()
+        {
+            if (!string.Equals(Environment.UserDomainName, Environment.MachineName, StringComparison.OrdinalIgnoreCase))
+                return false; // not a local account
+
+            IntPtr token;
+            if (LogonUser(Environment.UserName, ".", "", LogonNetwork, ProviderDefault, out token))
+            {
+                CloseHandle(token);
+                return true;
+            }
+            return Marshal.GetLastWin32Error() == ErrorAccountRestriction;
+        }
+
+        public static void OpenSettings()
+        {
+            try { Process.Start(SettingsPage); }
+            catch { /* very old builds without the settings page - nothing more we can do */ }
+        }
+    }
+
     internal sealed class TrayApp : ApplicationContext
     {
         [DllImport("user32.dll", SetLastError = true)]
@@ -1118,6 +1160,12 @@ namespace UnplugLock
         private readonly ToolStripMenuItem _setPasswordItem;
         private readonly ToolStripMenuItem _removePasswordItem;
         private readonly ToolStripMenuItem _guardItem;
+        private readonly ToolStripMenuItem _signInItem;
+        private readonly ToolStripSeparator _signInSeparator;
+
+        // the Windows account has no password, so locking won't keep anyone out
+        private bool _noSignIn;
+        private bool _signInBalloon;
 
         // fallback in case we miss a power event
         private readonly System.Windows.Forms.Timer _pollTimer;
@@ -1182,7 +1230,13 @@ namespace UnplugLock
             var lockNowItem = new ToolStripMenuItem("Lock now (test)", null, delegate { LockWorkStation(); });
             var exitItem = new ToolStripMenuItem("Exit", null, delegate { Guarded(Exit); });
 
+            _signInItem = new ToolStripMenuItem("Windows has no password - set one up...",
+                SystemIcons.Warning.ToBitmap(), delegate { WindowsSignIn.OpenSettings(); }) { Visible = false };
+            _signInSeparator = new ToolStripSeparator { Visible = false };
+
             var menu = new ContextMenuStrip();
+            menu.Items.Add(_signInItem);
+            menu.Items.Add(_signInSeparator);
             menu.Items.Add(_statusItem);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(_enabledItem);
@@ -1194,10 +1248,21 @@ namespace UnplugLock
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(lockNowItem);
             menu.Items.Add(exitItem);
-            menu.Opening += delegate { RefreshMenu(); };
+            menu.Opening += delegate
+            {
+                // once they've added a password, drop the warning (checking a blank account costs nothing)
+                if (_noSignIn && !WindowsSignIn.HasNoPassword())
+                    _noSignIn = false;
+                RefreshMenu();
+            };
 
             _tray = new NotifyIcon { ContextMenuStrip = menu };
             _tray.DoubleClick += delegate { Guarded(ToggleEnabled); };
+            _tray.BalloonTipClicked += delegate
+            {
+                if (_signInBalloon)
+                    WindowsSignIn.OpenSettings();
+            };
 
             _delayTimer = new System.Windows.Forms.Timer();
             _delayTimer.Tick += delegate { OnDelayElapsed(); };
@@ -1234,6 +1299,34 @@ namespace UnplugLock
 
             RefreshMenu();
             _tray.Visible = !_settings.HideIcon;
+
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                if (!WindowsSignIn.HasNoPassword())
+                    return;
+                try
+                {
+                    _invoker.BeginInvoke((MethodInvoker)delegate
+                    {
+                        if (_exiting)
+                            return;
+                        _noSignIn = true;
+                        RefreshMenu();
+                        if (_tray.Visible)
+                            WarnNoSignIn();
+                    });
+                }
+                catch (InvalidOperationException) { /* already shutting down */ }
+            });
+        }
+
+        private void WarnNoSignIn()
+        {
+            _signInBalloon = true;
+            _tray.ShowBalloonTip(10000, "Your Windows account has no password",
+                "UnplugLock can lock the screen, but anyone can click straight back in. " +
+                "Click here to set up a password or PIN.",
+                ToolTipIcon.Warning);
         }
 
         private void OnTick()
@@ -1482,6 +1575,12 @@ namespace UnplugLock
             _settings.HideIcon = false;
             _settings.Save();
             _tray.Visible = true;
+            if (_noSignIn)
+            {
+                WarnNoSignIn();
+                return;
+            }
+            _signInBalloon = false;
             _tray.ShowBalloonTip(4000, "UnplugLock is running",
                 _settings.Enabled ? "Your laptop locks when unplugged. Right-click the icon for options."
                                   : "UnplugLock is turned off. Right-click the icon for options.",
@@ -1552,9 +1651,13 @@ namespace UnplugLock
             }
             _setPasswordItem.Text = _settings.HasPassword ? "Change password..." : "Set password...";
             _removePasswordItem.Enabled = _settings.HasPassword;
+            _signInItem.Visible = _noSignIn;
+            _signInSeparator.Visible = _noSignIn;
 
             _tray.Icon = _settings.Enabled ? _iconOn : _iconOff;
-            string tip = "UnplugLock - " + (_settings.Enabled ? "on" : "off") + " (" + power.ToLowerInvariant() + ")";
+            string tip = _noSignIn
+                ? "UnplugLock - Windows has no password, locking won't help"
+                : "UnplugLock - " + (_settings.Enabled ? "on" : "off") + " (" + power.ToLowerInvariant() + ")";
             _tray.Text = tip.Length > 63 ? tip.Substring(0, 63) : tip; // tooltip max is 63 chars
         }
 

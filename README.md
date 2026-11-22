@@ -8,9 +8,18 @@
   Lightweight Windows tray app that locks your laptop the moment the charger is unplugged.
 </p>
 
+<p align="center">
+  <a href="https://unpluglock.com">unpluglock.com</a>
+</p>
+
 ---
 
 Leave your laptop on charge in a café, library or office. If someone pulls the plug to walk off with it, Windows locks straight away, and they're left holding a laptop at the lock screen.
+
+The laptop itself can be replaced. What's harder to replace is everything you're signed into: email, browser sessions, banking, work chat, photos. An unlocked laptop hands all of that over. UnplugLock makes sure that if your laptop goes, it goes locked.
+
+> [!IMPORTANT]
+> Locking only helps if your Windows account has a password, PIN or Windows Hello. Without one, anyone can click straight past the lock screen. Set one up in **Settings → Accounts → Sign-in options**. UnplugLock warns you if your account doesn't have one.
 
 ## Features
 
@@ -20,14 +29,15 @@ Leave your laptop on charge in a café, library or office. If someone pulls the 
 - **Recovery code.** Setting a password gives you a one-time recovery code, in case you forget the password.
 - **Process guard (on by default).** UnplugLock runs a small helper process, and the two restart each other within about a second if either one is closed. Programs running without admin rights can't end either process at all.
 - **Tamper-resistant settings.** With a password set, the settings are locked against ordinary registry edits, a hidden backup copy restores anything that's deleted, and the running app repairs changed settings within a second.
+- **Sign-in check.** If your Windows account has no password, UnplugLock warns you when it starts and keeps a reminder at the top of the tray menu, since locking can't keep anyone out without one. Clicking either opens Sign-in options. (It only checks local accounts. Work, school and Microsoft accounts always have a password.)
 - **Hidden mode.** Hide the tray icon. UnplugLock keeps running, and opening it again brings the icon back.
 - **Starts with Windows**, if you want it to. It always does while the process guard is on.
-- **Small, with no dependencies.** The app is 68 KB and the installer 145 KB. It uses .NET Framework 4.7.2 or later, which is built into Windows 10 (April 2018 Update and later) and Windows 11.
+- **Small, with no dependencies.** The app is 70 KB and the installer 149 KB. It uses .NET Framework 4.7.2 or later, which is built into Windows 10 (April 2018 Update and later) and Windows 11.
 - **No admin rights needed.** Installs and runs as your normal user.
 
 ## Install
 
-1. Download `UnplugLock-Setup-v1.0.0.exe` from the [Releases](https://github.com/sparepillowgit/UnplugLock/releases) page.
+1. Download `UnplugLock-Setup-v1.1.0.exe` from the [Releases](https://github.com/sparepillowgit/UnplugLock/releases) page.
 2. Run it and click **Install**.
 3. Look for the blue padlock in the system tray. You may need to click the **^** arrow next to the clock.
 
@@ -67,7 +77,7 @@ Keep the code safe. Because the settings are tamper-resistant, there's no easy w
 ### Silent install (for scripts)
 
 ```
-UnplugLock-Setup-v1.0.0.exe /silent [/nostartup] [/nolaunch] [/desktop] [/noguard]
+UnplugLock-Setup-v1.1.0.exe /silent [/nostartup] [/nolaunch] [/desktop] [/noguard]
 "%LOCALAPPDATA%\Programs\UnplugLock\Uninstall.exe" /uninstall /silent
 ```
 
@@ -77,8 +87,10 @@ A password-protected install can't be updated or removed silently.
 
 UnplugLock is a deterrent, not a security boundary.
 
+- It doesn't stop anyone taking the laptop. It just makes sure they get a locked one. If you want to stop the laptop leaving the table, use a cable lock as well.
+- The lock screen protects your signed-in session, not the drive itself. Without encryption, someone who takes the drive out can still read your files. Turn on BitLocker or Device encryption in Windows settings so your files stay protected too.
 - The password, process guard and settings protection make UnplugLock hard to switch off casually, but not impossible. On an account with admin rights, Task Manager can end the processes (the guard restarts them), and someone who knows exactly what to do can stop both processes and change the settings. No ordinary app can stop an administrator.
-- It only protects you while you're signed in and the laptop is plugged in. Your Windows password is what actually keeps people out, so use a strong one.
+- It only protects you while you're signed in and the laptop is plugged in. Your Windows sign-in is what actually keeps people out, so use a strong password or PIN. With no sign-in at all, the lock screen doesn't stop anyone.
 - If the laptop is asleep when it's unplugged, UnplugLock locks when it wakes up.
 
 ## Building from source
