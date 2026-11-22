@@ -12,6 +12,10 @@
   <a href="https://unpluglock.com">unpluglock.com</a>
 </p>
 
+<p align="center">
+  <img src="docs/banner.jpg" width="800" alt="A laptop showing the Windows lock screen, with its charging cable pulled out">
+</p>
+
 ---
 
 Leave your laptop on charge in a café, library or office. If someone pulls the plug to walk off with it, Windows locks straight away, and they're left holding a laptop at the lock screen.
@@ -42,6 +46,10 @@ The laptop itself can be replaced. What's harder to replace is everything you're
 2. Run it and click **Install**.
 3. Look for the blue plug icon in the system tray. You may need to click the **^** arrow next to the clock.
 
+<p align="center">
+  <img src="docs/installer.png" width="490" alt="The UnplugLock installer, with options to keep it running, start with Windows, add a desktop shortcut and open it when setup finishes">
+</p>
+
 > Windows SmartScreen may warn about an unrecognised app because the installer isn't code-signed. Click **More info → Run anyway**.
 
 UnplugLock installs to `%LOCALAPPDATA%\Programs\UnplugLock` and appears in **Settings → Apps**, where you can uninstall it. Uninstalling removes the program, its shortcuts, its startup entry and all of its settings.
@@ -49,6 +57,10 @@ UnplugLock installs to `%LOCALAPPDATA%\Programs\UnplugLock` and appears in **Set
 ## Usage
 
 Right-click the tray icon:
+
+<p align="center">
+  <img src="docs/tray-menu.png" width="244" alt="The UnplugLock tray menu">
+</p>
 
 | Menu item | What it does |
 |---|---|
@@ -114,6 +126,7 @@ This produces:
 | `setup.manifest` | Runs setup without asking for admin rights |
 | `build.cmd` | Build script |
 | `UnplugLock.ico` / `.png` | App icon, drawn by the app itself (delete the `.ico` and rebuild to regenerate both) |
+| `docs/` | Images used in this README |
 
 To release a new version, update `VERSION` in `build.cmd` and `Version` in `Setup.cs`.
 
