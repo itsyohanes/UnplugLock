@@ -1176,6 +1176,42 @@ main {
   color: var(--muted);
 }
 
+/* support */
+
+.support p {
+  max-width: 34em;
+  margin-bottom: 28px;
+  font-size: var(--title);
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.amounts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+/* the site's blue instead of the usual black: the suggested $5 is filled, the rest are a light tint */
+.amounts .button {
+  min-width: 76px;
+  text-align: center;
+  background: var(--accent);
+}
+
+.amounts .button:hover {
+  background: var(--accent-ink);
+}
+
+.amounts .button.ghost {
+  background: #eaf1fd;
+  color: var(--accent-ink);
+}
+
+.amounts .button.ghost:hover {
+  background: #dbe7fb;
+}
+
 /* footer */
 
 .footer {

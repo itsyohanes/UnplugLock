@@ -157,6 +157,12 @@ To release a new version, update `VERSION` in `build.cmd` and `Version` in `Setu
 - **Settings:** stored in `HKCU\Software\UnplugLock`, with a hidden backup in `%LOCALAPPDATA%\UnplugLock\settings.dat`. If one copy is missing, it's restored from the other the next time UnplugLock starts. If the two disagree, the stricter setting wins. With a password set, the registry key denies changes to everyone, and the running app checks both copies once a second and rewrites them if they've changed.
 - **Passwords:** neither the password nor the recovery code is stored. Only salted PBKDF2-SHA256 hashes (200,000 iterations) are kept.
 
+## Support
+
+UnplugLock is free, with no ads and no paid version, and it'll stay that way. If it's useful to you, you can chip in to help keep it going:
+
+**[$2](https://donate.stripe.com/14A6oH5tB2aog7J8HAfIs00?prefilled_amount=200) · [$5](https://donate.stripe.com/14A6oH5tB2aog7J8HAfIs00?prefilled_amount=500) · [$10](https://donate.stripe.com/14A6oH5tB2aog7J8HAfIs00?prefilled_amount=1000) · [Other amount](https://donate.stripe.com/14A6oH5tB2aog7J8HAfIs00)**
+
 ## License
 
 [MIT](LICENSE)
