@@ -2,6 +2,7 @@
 // Sticks to C# 5 / .NET 4.x so it builds with the csc.exe that comes with Windows.
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -774,6 +775,8 @@ namespace UnplugLock
         public int DelaySeconds = 0; // 0 = lock instantly
         public bool HideIcon = false;
         public bool Guard = true;
+        public bool LockOnEthernet = false; // also lock when a wired network drops
+        public bool LockOnWifi = false;     // also lock when Wi-Fi disconnects
 
         // only PBKDF2 hashes + salts get stored
         private string _passwordHash;
@@ -838,6 +841,8 @@ namespace UnplugLock
             }
             s.Enabled = reg.Enabled || bak.Enabled;
             s.Guard = reg.Guard || bak.Guard;
+            s.LockOnEthernet = reg.LockOnEthernet || bak.LockOnEthernet;
+            s.LockOnWifi = reg.LockOnWifi || bak.LockOnWifi;
             s.DelaySeconds = Math.Min(reg.DelaySeconds, bak.DelaySeconds);
             return s;
         }
@@ -883,6 +888,7 @@ namespace UnplugLock
             return o != null &&
                    o.Enabled == Enabled && o.DelaySeconds == DelaySeconds &&
                    o.HideIcon == HideIcon && o.Guard == Guard &&
+                   o.LockOnEthernet == LockOnEthernet && o.LockOnWifi == LockOnWifi &&
                    o._passwordHash == _passwordHash && o._passwordSalt == _passwordSalt &&
                    o._recoveryHash == _recoveryHash && o._recoverySalt == _recoverySalt;
         }
@@ -900,6 +906,8 @@ namespace UnplugLock
                     s.DelaySeconds = Math.Max(0, Convert.ToInt32(key.GetValue("DelaySeconds", 0)));
                     s.HideIcon = Convert.ToInt32(key.GetValue("HideIcon", 0)) != 0;
                     s.Guard = Convert.ToInt32(key.GetValue("Guard", 1)) != 0;
+                    s.LockOnEthernet = Convert.ToInt32(key.GetValue("LockOnEthernet", 0)) != 0;
+                    s.LockOnWifi = Convert.ToInt32(key.GetValue("LockOnWifi", 0)) != 0;
                     s._passwordHash = NullIfEmpty(key.GetValue("PasswordHash") as string);
                     s._passwordSalt = NullIfEmpty(key.GetValue("PasswordSalt") as string);
                     s._recoveryHash = NullIfEmpty(key.GetValue("RecoveryHash") as string);
@@ -922,6 +930,8 @@ namespace UnplugLock
                 key.SetValue("DelaySeconds", DelaySeconds, RegistryValueKind.DWord);
                 key.SetValue("HideIcon", HideIcon ? 1 : 0, RegistryValueKind.DWord);
                 key.SetValue("Guard", Guard ? 1 : 0, RegistryValueKind.DWord);
+                key.SetValue("LockOnEthernet", LockOnEthernet ? 1 : 0, RegistryValueKind.DWord);
+                key.SetValue("LockOnWifi", LockOnWifi ? 1 : 0, RegistryValueKind.DWord);
                 SetOrDelete(key, "PasswordHash", _passwordHash);
                 SetOrDelete(key, "PasswordSalt", _passwordSalt);
                 SetOrDelete(key, "RecoveryHash", _recoveryHash);
@@ -959,6 +969,8 @@ namespace UnplugLock
                         case "DelaySeconds": s.DelaySeconds = Math.Max(0, int.Parse(value)); break;
                         case "HideIcon": s.HideIcon = value == "1"; break;
                         case "Guard": s.Guard = value == "1"; break;
+                        case "LockOnEthernet": s.LockOnEthernet = value == "1"; break;
+                        case "LockOnWifi": s.LockOnWifi = value == "1"; break;
                         case "PasswordHash": s._passwordHash = NullIfEmpty(value); break;
                         case "PasswordSalt": s._passwordSalt = NullIfEmpty(value); break;
                         case "RecoveryHash": s._recoveryHash = NullIfEmpty(value); break;
@@ -984,6 +996,8 @@ namespace UnplugLock
                 "DelaySeconds=" + DelaySeconds,
                 "HideIcon=" + (HideIcon ? "1" : "0"),
                 "Guard=" + (Guard ? "1" : "0"),
+                "LockOnEthernet=" + (LockOnEthernet ? "1" : "0"),
+                "LockOnWifi=" + (LockOnWifi ? "1" : "0"),
                 "PasswordHash=" + _passwordHash,
                 "PasswordSalt=" + _passwordSalt,
                 "RecoveryHash=" + _recoveryHash,
@@ -1485,6 +1499,79 @@ namespace UnplugLock
         }
     }
 
+    internal enum NetKind { Ethernet, Wifi }
+
+    // which physical network adapters are connected right now. Reads the adapter table
+    // straight from Windows (GetIfTable2), so it needs no permissions and sends nothing anywhere.
+    // Virtual adapters (Hyper-V, WSL, VPNs, Wi-Fi Direct) and Bluetooth are left out.
+    internal static class NetworkLinks
+    {
+        [DllImport("iphlpapi.dll")]
+        private static extern int GetIfTable2(out IntPtr table);
+
+        [DllImport("iphlpapi.dll")]
+        private static extern void FreeMibTable(IntPtr table);
+
+        // MIB_IF_ROW2 layout (same on x86 and x64)
+        private const int RowSize = 1352;
+        private const int TableHeader = 8; // NumEntries, padded to 8
+        private const int OffLuid = 0;
+        private const int OffType = 1128;
+        private const int OffPhysicalMedium = 1140;
+        private const int OffFlags = 1152;
+        private const int OffOperStatus = 1156;
+        private const int OffMediaConnectState = 1164;
+
+        private const int IfTypeEthernet = 6;
+        private const int IfTypeWifi = 71;
+        private const int MediumWirelessLan = 1;
+        private const int MediumNative80211 = 9;
+        private const int MediumBluetooth = 10;
+        private const byte FlagHardware = 0x01;
+        private const byte FlagFilter = 0x02;
+        private const int OperUp = 1;
+        private const int MediaConnected = 1;
+
+        // adapter LUID -> kind, for every physical adapter that has a link. Null if the table can't be read.
+        public static Dictionary<long, NetKind> Connected()
+        {
+            IntPtr table;
+            if (GetIfTable2(out table) != 0)
+                return null;
+            try
+            {
+                var result = new Dictionary<long, NetKind>();
+                int count = Marshal.ReadInt32(table);
+                for (int i = 0; i < count; i++)
+                {
+                    IntPtr row = new IntPtr(table.ToInt64() + TableHeader + (long)i * RowSize);
+                    byte flags = Marshal.ReadByte(row, OffFlags);
+                    if ((flags & FlagHardware) == 0 || (flags & FlagFilter) != 0)
+                        continue;
+                    if (Marshal.ReadInt32(row, OffOperStatus) != OperUp ||
+                        Marshal.ReadInt32(row, OffMediaConnectState) != MediaConnected)
+                        continue;
+
+                    int type = Marshal.ReadInt32(row, OffType);
+                    int medium = Marshal.ReadInt32(row, OffPhysicalMedium);
+                    NetKind kind;
+                    if (type == IfTypeWifi || medium == MediumNative80211 || medium == MediumWirelessLan)
+                        kind = NetKind.Wifi;
+                    else if (type == IfTypeEthernet && medium != MediumBluetooth)
+                        kind = NetKind.Ethernet;
+                    else
+                        continue;
+                    result[Marshal.ReadInt64(row, OffLuid)] = kind;
+                }
+                return result;
+            }
+            finally
+            {
+                FreeMibTable(table);
+            }
+        }
+    }
+
     internal sealed class TrayApp : ApplicationContext
     {
         [DllImport("user32.dll", SetLastError = true)]
@@ -1497,6 +1584,12 @@ namespace UnplugLock
         public const string ShowSignalName = @"Local\UnplugLock.ShowIcon";
 
         private static readonly int[] DelayChoices = { 0, 1, 3, 5, 10 };
+
+        // network drops always wait at least this long, so a brief blip (a driver hiccup,
+        // Wi-Fi hopping between access points) doesn't lock you out
+        private const int NetMinDelaySeconds = 2;
+        // ignore drops for this long after waking, while Wi-Fi and Ethernet reconnect
+        private const int NetSettleSeconds = 15;
 
         private static Icon _appIcon;
         public static Icon AppIcon
@@ -1518,6 +1611,8 @@ namespace UnplugLock
         private readonly ToolStripMenuItem _setPasswordItem;
         private readonly ToolStripMenuItem _removePasswordItem;
         private readonly ToolStripMenuItem _guardItem;
+        private readonly ToolStripMenuItem _ethernetItem;
+        private readonly ToolStripMenuItem _wifiItem;
         private readonly ToolStripMenuItem _signInItem;
         private readonly ToolStripSeparator _signInSeparator;
 
@@ -1545,6 +1640,14 @@ namespace UnplugLock
         private readonly RegisteredWaitHandle _showWait;
 
         private PowerLineStatus _lastStatus;
+
+        // what's waiting on the lock delay
+        private bool _powerPending;
+        private readonly Dictionary<long, NetKind> _netPending = new Dictionary<long, NetKind>();
+        // adapters connected at the last check; null = start fresh without locking
+        private Dictionary<long, NetKind> _netLast;
+        private DateTime _netSettleUntil;
+        private DateTime _lastTick = DateTime.UtcNow;
         private readonly Icon _iconOn;
         private readonly Icon _iconOff;
         private bool _busy; // true while a dialog is open
@@ -1575,6 +1678,14 @@ namespace UnplugLock
                 _delayMenu.DropDownItems.Add(item);
             }
 
+            _ethernetItem = new ToolStripMenuItem("Ethernet is unplugged", null,
+                delegate { Guarded(delegate { ToggleNetLock(NetKind.Ethernet); }); });
+            _wifiItem = new ToolStripMenuItem("Wi-Fi disconnects", null,
+                delegate { Guarded(delegate { ToggleNetLock(NetKind.Wifi); }); });
+            var alsoMenu = new ToolStripMenuItem("Also lock when");
+            alsoMenu.DropDownItems.Add(_ethernetItem);
+            alsoMenu.DropDownItems.Add(_wifiItem);
+
             _startupItem = new ToolStripMenuItem("Start with Windows", null, delegate { Guarded(ToggleStartup); });
             var hideItem = new ToolStripMenuItem("Hide tray icon", null, delegate { Guarded(HideTrayIcon); });
             _guardItem = new ToolStripMenuItem("Guard process (auto-restart)", null, delegate { Guarded(ToggleGuard); });
@@ -1585,7 +1696,7 @@ namespace UnplugLock
             passwordMenu.DropDownItems.Add(_setPasswordItem);
             passwordMenu.DropDownItems.Add(_removePasswordItem);
 
-            var lockNowItem = new ToolStripMenuItem("Lock now (test)", null, delegate { LockWorkStation(); });
+            var lockNowItem = new ToolStripMenuItem("Lock now (test)", null, delegate { LockNow(); });
             var exitItem = new ToolStripMenuItem("Exit", null, delegate { Guarded(Exit); });
 
             _signInItem = new ToolStripMenuItem("Windows has no password - set one up...",
@@ -1599,6 +1710,7 @@ namespace UnplugLock
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(_enabledItem);
             menu.Items.Add(_delayMenu);
+            menu.Items.Add(alsoMenu);
             menu.Items.Add(_startupItem);
             menu.Items.Add(_guardItem);
             menu.Items.Add(hideItem);
@@ -1690,7 +1802,14 @@ namespace UnplugLock
 
         private void OnTick()
         {
+            // a long gap between ticks means we were asleep, even if we missed the resume event
+            var now = DateTime.UtcNow;
+            if ((now - _lastTick).TotalSeconds > 10)
+                OnSleepOrWake();
+            _lastTick = now;
+
             CheckPower();
+            CheckNetwork();
 
             // settings edited or deleted behind our back - put them back
             if (_settings.HasPassword && !_settings.IsInSync())
@@ -1769,8 +1888,19 @@ namespace UnplugLock
 
         private void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
         {
+            if (e.Mode == PowerModes.Suspend || e.Mode == PowerModes.Resume)
+                OnSleepOrWake(); // the network drops going to sleep and reconnects after waking
             if (e.Mode == PowerModes.StatusChange || e.Mode == PowerModes.Resume)
                 CheckPower();
+        }
+
+        private void OnSleepOrWake()
+        {
+            _netLast = null;
+            _netSettleUntil = DateTime.UtcNow.AddSeconds(NetSettleSeconds);
+            _netPending.Clear();
+            if (!_powerPending)
+                _delayTimer.Stop();
         }
 
         private void CheckPower()
@@ -1785,9 +1915,16 @@ namespace UnplugLock
                 _lastStatus = now;
 
                 if (previous == PowerLineStatus.Online && now == PowerLineStatus.Offline)
+                {
                     OnUnplugged();
+                }
                 else if (now == PowerLineStatus.Online)
-                    _delayTimer.Stop(); // power came back during the delay
+                {
+                    // power came back during the delay
+                    _powerPending = false;
+                    if (_netPending.Count == 0)
+                        _delayTimer.Stop();
+                }
 
                 RefreshMenu();
             }
@@ -1800,22 +1937,103 @@ namespace UnplugLock
 
             if (_settings.DelaySeconds <= 0)
             {
-                LockWorkStation();
+                LockNow();
             }
             else
             {
-                _delayTimer.Stop();
-                _delayTimer.Interval = _settings.DelaySeconds * 1000;
-                _delayTimer.Start();
+                _powerPending = true;
+                StartDelay(_settings.DelaySeconds);
             }
+        }
+
+        private bool WatchesNetwork
+        {
+            get { return _settings.Enabled && (_settings.LockOnEthernet || _settings.LockOnWifi); }
+        }
+
+        private bool Watches(NetKind kind)
+        {
+            return kind == NetKind.Ethernet ? _settings.LockOnEthernet : _settings.LockOnWifi;
+        }
+
+        // like the charger, only a connected -> disconnected change counts. Starting up,
+        // turning an option on or waking up while disconnected never locks.
+        private void CheckNetwork()
+        {
+            if (!WatchesNetwork)
+            {
+                _netLast = null;
+                return;
+            }
+            var now = NetworkLinks.Connected();
+            if (now == null)
+                return;
+
+            // reconnected during the delay
+            foreach (long luid in new List<long>(_netPending.Keys))
+                if (now.ContainsKey(luid))
+                    _netPending.Remove(luid);
+            if (_netPending.Count == 0 && !_powerPending)
+                _delayTimer.Stop();
+
+            var dropped = new List<KeyValuePair<long, NetKind>>();
+            if (_netLast != null && DateTime.UtcNow >= _netSettleUntil)
+                foreach (var link in _netLast)
+                    if (!now.ContainsKey(link.Key) && Watches(link.Value))
+                        dropped.Add(link);
+            _netLast = now;
+
+            if (dropped.Count == 0)
+                return;
+            foreach (var link in dropped)
+                _netPending[link.Key] = link.Value;
+            StartDelay(Math.Max(_settings.DelaySeconds, NetMinDelaySeconds));
+        }
+
+        // a delay that's already running keeps going, so a second trigger never pushes the lock back
+        private void StartDelay(int seconds)
+        {
+            if (_delayTimer.Enabled)
+                return;
+            _delayTimer.Interval = seconds * 1000;
+            _delayTimer.Start();
         }
 
         private void OnDelayElapsed()
         {
             _delayTimer.Stop();
-            // still unplugged?
-            if (_settings.Enabled && CurrentPowerStatus() == PowerLineStatus.Offline)
+            bool lockIt = false;
+            if (_settings.Enabled)
+            {
+                // still unplugged?
+                if (_powerPending && CurrentPowerStatus() == PowerLineStatus.Offline)
+                    lockIt = true;
+
+                // still disconnected? (if the adapters can't be read, assume so)
+                if (!lockIt && _netPending.Count > 0)
+                {
+                    var now = NetworkLinks.Connected();
+                    foreach (var link in _netPending)
+                        if (Watches(link.Value) && (now == null || !now.ContainsKey(link.Key)))
+                            lockIt = true;
+                }
+            }
+            ClearPending();
+            if (lockIt)
                 LockWorkStation();
+        }
+
+        private void LockNow()
+        {
+            ClearPending();
+            LockWorkStation();
+        }
+
+        private void ClearPending()
+        {
+            _delayTimer.Stop();
+            _powerPending = false;
+            _netPending.Clear();
         }
 
 
@@ -1868,8 +2086,32 @@ namespace UnplugLock
 
             _settings.Enabled = !_settings.Enabled;
             if (!_settings.Enabled)
-                _delayTimer.Stop();
+                ClearPending();
             _settings.Save();
+        }
+
+        private void ToggleNetLock(NetKind kind)
+        {
+            bool on = Watches(kind);
+            if (on && !Authorize(kind == NetKind.Ethernet ? "stop locking when Ethernet is unplugged"
+                                                          : "stop locking when Wi-Fi disconnects"))
+                return;
+
+            if (kind == NetKind.Ethernet)
+                _settings.LockOnEthernet = !on;
+            else
+                _settings.LockOnWifi = !on;
+            _settings.Save();
+
+            if (on)
+            {
+                foreach (var link in new List<KeyValuePair<long, NetKind>>(_netPending))
+                    if (link.Value == kind)
+                        _netPending.Remove(link.Key);
+                if (_netPending.Count == 0 && !_powerPending)
+                    _delayTimer.Stop();
+            }
+            CheckNetwork(); // start watching straight away
         }
 
         private void SetDelay(int seconds)
@@ -2002,6 +2244,8 @@ namespace UnplugLock
             _startupItem.Enabled = !_settings.Guard;
             _startupItem.Text = _settings.Guard ? "Start with Windows (required by guard)" : "Start with Windows";
             _guardItem.Checked = _settings.Guard;
+            _ethernetItem.Checked = _settings.LockOnEthernet;
+            _wifiItem.Checked = _settings.LockOnWifi;
             foreach (ToolStripItem item in _delayMenu.DropDownItems)
             {
                 var mi = item as ToolStripMenuItem;

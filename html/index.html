@@ -41,8 +41,8 @@
         "description": "Free tray app for Windows that locks your laptop the moment the charger is unplugged, so whoever grabs it gets a lock screen instead of your signed-in accounts.",
         "applicationCategory": "SecurityApplication",
         "operatingSystem": "Windows 10, Windows 11",
-        "softwareVersion": "1.2.0",
-        "fileSize": "160KB",
+        "softwareVersion": "1.3.0",
+        "fileSize": "170KB",
         "license": "https://opensource.org/licenses/MIT",
         "downloadUrl": "https://github.com/itsyohanes/UnplugLock/releases/latest",
         "sameAs": "https://github.com/itsyohanes/UnplugLock",
@@ -50,6 +50,7 @@
         "featureList": [
           "Locks Windows when the laptop switches from AC power to battery",
           "Optional lock delay of 1 to 10 seconds",
+          "Can also lock when Ethernet is unplugged or Wi-Fi disconnects",
           "Password protection with a recovery code",
           "Guard process that restarts the app if it is closed",
           "No admin rights needed"
@@ -62,6 +63,11 @@
             "@type": "Question",
             "name": "What happens if someone grabs my laptop while it's charging?",
             "acceptedAnswer": { "@type": "Answer", "text": "To grab a charging laptop they have to pull the charger out first. The moment it drops to battery, UnplugLock locks Windows, so they're stuck at the lock screen instead of inside your email, browser and accounts." }
+          },
+          {
+            "@type": "Question",
+            "name": "What if my laptop isn't plugged in?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Turn on the network locks. Right-click the tray icon, open Also lock when, and pick Ethernet is unplugged, Wi-Fi disconnects, or both. Then Windows also locks when someone pulls the network cable or carries the laptop out of Wi-Fi range. Both are off by default, because switching Wi-Fi networks yourself locks too." }
           },
           {
             "@type": "Question",
@@ -134,7 +140,7 @@
         <a class="link" href="https://github.com/itsyohanes/UnplugLock" data-umami-event="github" data-umami-event-location="hero">View the source &rarr;</a>
       </div>
 
-      <p class="meta"><span>Version 1.2.0</span><span>160 KB</span><span>Windows 10 &amp; 11</span><span>Free, MIT licence</span></p>
+      <p class="meta"><span>Version 1.3.0</span><span>170 KB</span><span>Windows 10 &amp; 11</span><span>Free, MIT licence</span></p>
 
       <!-- scroll-driven laptop: the screen tilts up and wakes, the cable slides out, Windows locks -->
       <div class="scroll-scene">
@@ -199,6 +205,7 @@
             <hr>
             <div class="item on">Enabled</div>
             <div class="item sub">Lock delay</div>
+            <div class="item sub">Also lock when</div>
             <div class="item on dim">Start with Windows (required by guard)</div>
             <div class="item on">Guard process (auto-restart)</div>
             <div class="item">Hide tray icon</div>
@@ -217,6 +224,7 @@
           <h2 id="features" class="heading">Lives in the tray</h2>
           <dl class="facts">
             <div><dt>Optional delay</dt><dd>Lock instantly or after 1&ndash;10 seconds, so a loose cable doesn't lock you out.</dd></div>
+            <div><dt>Network locks too</dt><dd>Optionally lock when the Ethernet cable is pulled or Wi-Fi disconnects, so a laptop running on battery is covered as well.</dd></div>
             <div><dt>Hard to switch off</dt><dd>Set a password to stop anyone else turning it off or closing it.</dd></div>
             <div><dt>Can hide its icon</dt><dd>Hide the tray icon and UnplugLock keeps running out of sight. Open it again from the Start menu to bring the icon back.</dd></div>
             <div><dt>Checks your Windows sign-in</dt><dd>Locking only helps if Windows asks for a password, PIN or Windows Hello. If your account has none, UnplugLock tells you.</dd></div>
@@ -232,6 +240,10 @@
         <details>
           <summary data-umami-event="faq" data-umami-event-question="grabbed">What happens if someone grabs my laptop while it's charging?</summary>
           <p>To grab a charging laptop they have to pull the charger out first. The moment it drops to battery, UnplugLock locks Windows, so they're stuck at the lock screen instead of inside your email, browser and accounts.</p>
+        </details>
+        <details>
+          <summary data-umami-event="faq" data-umami-event-question="not-plugged-in">What if my laptop isn't plugged in?</summary>
+          <p>Turn on the network locks. Right-click the tray icon, open <strong>Also lock when</strong>, and pick <strong>Ethernet is unplugged</strong>, <strong>Wi-Fi disconnects</strong>, or both. Then Windows also locks when someone pulls the network cable or carries the laptop out of Wi-Fi range. Both are off by default, because switching Wi-Fi networks yourself locks too.</p>
         </details>
         <details>
           <summary data-umami-event="faq" data-umami-event-question="password">Do I need a password on my Windows account?</summary>

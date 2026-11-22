@@ -29,20 +29,21 @@ The laptop itself can be replaced. What's harder to replace is everything you're
 
 - **Locks on unplug.** Locks Windows as soon as the laptop switches from AC power to battery.
 - **Optional lock delay.** Instant, or 1, 3, 5 or 10 seconds. If power comes back within the delay (for example, a loose cable), it doesn't lock.
-- **Password protection.** Once a password is set, UnplugLock asks for it before you can turn it off, change the lock delay, turn off the process guard or Start with Windows, change or remove the password, exit, update or uninstall.
+- **Optional network locks.** Also lock when an Ethernet cable is unplugged or Wi-Fi disconnects, which covers a laptop that's running on battery. Both are off by default.
+- **Password protection.** Once a password is set, UnplugLock asks for it before you can turn it off, change the lock delay, turn off a network lock, turn off the process guard or Start with Windows, change or remove the password, exit, update or uninstall.
 - **Recovery code.** Setting a password gives you a one-time recovery code, in case you forget the password.
 - **Process guard (on by default).** UnplugLock runs a small helper process, and the two restart each other within about a second if either one is closed. Programs running without admin rights can't end either process at all.
 - **Tamper-resistant settings.** With a password set, the settings are locked against ordinary registry edits, a hidden backup copy restores anything that's deleted, and the running app repairs changed settings within a second.
 - **Sign-in check.** If your Windows account has no password, UnplugLock warns you when it starts and keeps a reminder at the top of the tray menu, since locking can't keep anyone out without one. Clicking either opens Sign-in options. (It only checks local accounts. Work, school and Microsoft accounts always have a password.)
 - **Hidden mode.** Hide the tray icon. UnplugLock keeps running, and opening it again brings the icon back.
 - **Starts with Windows**, if you want it to. It always does while the process guard is on.
-- **Small, with no dependencies.** The app is 75 KB and the installer 160 KB. It uses .NET Framework 4.7.2 or later, which is built into Windows 10 (April 2018 Update and later) and Windows 11.
+- **Small, with no dependencies.** The app is 80 KB and the installer 170 KB. It uses .NET Framework 4.7.2 or later, which is built into Windows 10 (April 2018 Update and later) and Windows 11.
 - **No admin rights needed.** Installs and runs as your normal user.
 - **No telemetry.** No analytics, tracking or update checks. UnplugLock never connects to the internet, so nothing about you or your laptop is sent anywhere, and its settings stay on your laptop.
 
 ## Install
 
-1. Download `UnplugLock-Setup-v1.2.0.exe` from the [Releases](https://github.com/itsyohanes/UnplugLock/releases) page.
+1. Download `UnplugLock-Setup-v1.3.0.exe` from the [Releases](https://github.com/itsyohanes/UnplugLock/releases) page.
 2. Run it and click **Install**.
 3. Look for the blue plug icon in the system tray. You may need to click the **^** arrow next to the clock.
 
@@ -59,7 +60,7 @@ UnplugLock installs to `%LOCALAPPDATA%\Programs\UnplugLock` and appears in **Set
 Right-click the tray icon:
 
 <p align="center">
-  <img src="docs/tray-menu.png" width="244" alt="The UnplugLock tray menu">
+  <img src="docs/tray-context-menu.png" width="307" alt="The UnplugLock tray menu">
 </p>
 
 | Menu item | What it does |
@@ -67,6 +68,7 @@ Right-click the tray icon:
 | *Plugged in / On battery* | Current power status |
 | **Enabled** | Turn UnplugLock on or off (double-clicking the icon does the same). The icon goes grey when it's off. |
 | **Lock delay** | How long to wait after unplugging before locking |
+| **Also lock when** | **Ethernet is unplugged** or **Wi-Fi disconnects**. See [Network locks](#network-locks). |
 | **Start with Windows** | Launch automatically when you sign in. Always on while the process guard is on. |
 | **Guard process (auto-restart)** | Keep UnplugLock running even if it's closed, for example from Task Manager |
 | **Hide tray icon** | Hide the icon while UnplugLock keeps running. Open UnplugLock again from the Start menu to bring it back. |
@@ -75,6 +77,23 @@ Right-click the tray icon:
 | **Exit** | Close UnplugLock (and its helper process) |
 
 UnplugLock only reacts to the change from plugged in to battery. Starting it while already on battery won't lock you out, and plugging back in never unlocks anything.
+
+### Network locks
+
+Under **Also lock when**, you can have UnplugLock lock Windows when the network drops as well as the charger. This helps when the laptop is running on battery, so pulling the charger isn't an option:
+
+- **Ethernet is unplugged:** a wired connection loses its link. This includes pulling the cable, unplugging a USB network adapter and undocking.
+- **Wi-Fi disconnects:** the laptop drops off Wi-Fi. This includes being carried out of range, and Wi-Fi or airplane mode being turned off.
+
+They work like the charger trigger:
+
+- **Only a drop counts.** Turning an option on, or starting UnplugLock, while disconnected never locks.
+- **It uses the lock delay, with a 2-second minimum.** That way a brief blip doesn't lock you out. If the connection comes back in time, it doesn't lock.
+- **Sleep doesn't count.** The network goes down when the laptop sleeps and takes a few seconds to come back after it wakes, so drops in the first 15 seconds after waking are ignored.
+
+Only physical adapters are watched. Virtual ones (Hyper-V, WSL, VPNs), Wi-Fi Direct and Bluetooth are ignored. Switching to a different Wi-Fi network, or turning Wi-Fi off yourself, counts as a disconnect and locks. That's deliberate, because someone holding your unlocked laptop could otherwise switch Wi-Fi off before walking away. If you change networks often, set a longer lock delay.
+
+Reading the adapter state doesn't need location access or any other permission, and nothing is sent anywhere.
 
 ### Forgot your password?
 
@@ -90,7 +109,7 @@ Keep the code safe. Because the settings are tamper-resistant, there's no easy w
 ### Silent install (for scripts)
 
 ```
-UnplugLock-Setup-v1.2.0.exe /silent [/nostartup] [/nolaunch] [/desktop] [/noguard]
+UnplugLock-Setup-v1.3.0.exe /silent [/nostartup] [/nolaunch] [/desktop] [/noguard]
 "%LOCALAPPDATA%\Programs\UnplugLock\Uninstall.exe" /uninstall /silent
 ```
 
