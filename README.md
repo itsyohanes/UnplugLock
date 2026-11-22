@@ -47,7 +47,7 @@ The laptop itself can be replaced. What's harder to replace is everything you're
 3. Look for the blue plug icon in the system tray. You may need to click the **^** arrow next to the clock.
 
 <p align="center">
-  <img src="docs/installer.png" width="488" alt="The UnplugLock installer, with options to keep it running, start with Windows, add a desktop shortcut and open it when setup finishes">
+  <img src="docs/installer-window.png" width="488" alt="The UnplugLock installer, with options to keep it running, start with Windows, add a desktop shortcut and open it when setup finishes">
 </p>
 
 > Windows SmartScreen may warn about an unrecognised app because the installer isn't code-signed. Click **More info → Run anyway**.
