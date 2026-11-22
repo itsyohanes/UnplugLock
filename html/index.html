@@ -146,11 +146,51 @@
       <div class="scroll-scene">
         <h2 id="how" class="sr-only">How it works</h2>
         <div class="scene">
-          <div class="laptop" role="img" aria-label="A laptop on charge. As you scroll, its screen tilts up, the charging cable is pulled out of the side, and the screen switches to the Windows lock screen.">
+          <div class="laptop" role="img" aria-label="A laptop on charge, signed in to an online banking page. As you scroll, its screen tilts up, the charging cable is pulled out of the side, and the screen switches to the Windows lock screen.">
             <span class="halo"></span>
             <div class="lid">
               <div class="screen">
                 <div class="desktop">
+                  <!-- what the thief would get if it didn't lock: a signed-in bank page and a security code -->
+                  <div class="win" aria-hidden="true">
+                    <div class="win-top">
+                      <span class="tab is-active"><i class="fav"></i>Online Banking</span>
+                      <span class="tab"><i class="fav fav-mail"></i>Inbox (3)</span>
+                      <span class="win-ctl"><i></i><i></i><i></i></span>
+                    </div>
+                    <div class="win-bar">
+                      <span class="url"><svg viewBox="0 0 10 12"><path d="M2.5 5.5 V4 a2.5 2.5 0 0 1 5 0 V5.5" fill="none" stroke="currentColor" stroke-width="1.3"/><rect x="1" y="5" width="8" height="6.5" rx="1.4" fill="currentColor"/></svg><i></i></span>
+                    </div>
+                    <div class="bank">
+                      <div class="bank-nav"><b>Overview</b><i></i><i></i><i></i><i></i></div>
+                      <div class="bank-main">
+                        <div class="bank-head">
+                          <span class="bank-hi">Good afternoon</span>
+                          <span class="bank-send">Send money</span>
+                        </div>
+                        <div class="accts">
+                          <div class="acct acct-main">
+                            <span class="acct-name">Checking <em>•••• 4417</em></span>
+                            <span class="acct-bal">$4,862.19</span>
+                          </div>
+                          <div class="acct">
+                            <span class="acct-name">Savings <em>•••• 9032</em></span>
+                            <span class="acct-bal">$18,350.00</span>
+                          </div>
+                        </div>
+                        <span class="tx-head">Recent payments</span>
+                        <ul class="tx">
+                          <li><span>Salary</span><span class="in">+$3,420.00</span></li>
+                          <li><span>Rent</span><span>−$1,250.00</span></li>
+                          <li><span>Groceries</span><span>−$64.37</span></li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="toast" aria-hidden="true">
+                    <span class="toast-app"><i></i>Messages</span>
+                    <span class="toast-body"><b>482 913</b> is your bank security code. Never share it.</span>
+                  </div>
                   <div class="tb">
                     <span class="tb-icons"><i></i><i></i><i></i><i></i><i></i></span>
                     <span class="tb-tray">
