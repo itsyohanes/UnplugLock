@@ -56,6 +56,17 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* background texture: a light grain behind everything that stays put while the page scrolls */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
 img {
   display: block;
   max-width: 100%;
@@ -272,6 +283,44 @@ main {
   container-type: inline-size;
   perspective: 240cqw;
   perspective-origin: 50% 0%;
+}
+
+/* rainbow light thrown by the screen. the halo is a copy of the lid's box that tilts with it,
+   coloured by direction from the middle so each edge throws its own colour (warm on the left,
+   cool on the right) and the bottom edge throws none, so nothing spills under the laptop.
+   two layers: a tight bright one right at the edge and a wide faint bloom, like real light.
+   it comes up with the screen and eases back a little once it locks */
+.halo {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  left: 7%;
+  width: 86%;
+  aspect-ratio: 16 / 10.3;
+  transform-origin: 50% 100%;
+  transform: rotateX(var(--lid));
+  opacity: calc((0.1 + 0.9 * var(--on)) * (1 - 0.25 * var(--lock)));
+  pointer-events: none;
+}
+
+.halo::before,
+.halo::after {
+  content: "";
+  position: absolute;
+  border-radius: 3cqw;
+  background: conic-gradient(#74e3a8, #5cc4ff 50deg, #8b7bff 100deg, #ff7ad9 140deg, transparent 168deg 192deg, #ff7a7a 220deg, #ffb85c 280deg, #ffe27a 325deg, #74e3a8);
+}
+
+.halo::before {
+  inset: -0.6cqw -0.6cqw 14% -0.6cqw;
+  filter: blur(2.2cqw);
+  opacity: 0.75;
+}
+
+.halo::after {
+  inset: -2cqw -3cqw 22% -3cqw;
+  filter: blur(8cqw);
+  opacity: 0.55;
 }
 
 /* the three steps under the laptop; the script fills each line as you scroll through its part */
