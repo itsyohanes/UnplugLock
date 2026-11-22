@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UnplugLock: Lock Your Laptop When the Charger Is Unplugged</title>
+  <meta name="description" content="Free Windows app that locks your laptop the instant the charger is pulled, so whoever grabs it gets a lock screen, not your email and accounts.">
+  <meta name="theme-color" content="#ffffff">
+  <link rel="canonical" href="https://unpluglock.com/">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="UnplugLock">
+  <meta property="og:url" content="https://unpluglock.com/">
+  <meta property="og:title" content="UnplugLock: Lock Your Laptop When the Charger Is Unplugged">
+  <meta property="og:description" content="If someone pulls the charger to grab your laptop, Windows locks straight away, so they get a lock screen instead of your accounts.">
+  <meta property="og:image" content="https://unpluglock.com/img/og.jpg">
+  <meta property="og:image:width" content="2400">
+  <meta property="og:image:height" content="1260">
+  <meta property="og:image:alt" content="A laptop showing the Windows lock screen, with its charging cable pulled out">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://unpluglock.com/img/og.jpg">
+
+  <link rel="icon" type="image/svg+xml" href="img/icon.svg">
+  <link rel="icon" type="image/png" href="img/icon.png">
+  <link rel="apple-touch-icon" href="img/icon.png">
+  <link rel="preload" href="fonts/roboto.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/instrument-sans.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="https://umami.yohanesmar.io/script.js" data-website-id="6ac4eac1-4d12-419d-b1c3-99565152d088" data-domains="unpluglock.com"></script>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "SoftwareApplication",
+        "name": "UnplugLock",
+        "url": "https://unpluglock.com/",
+        "image": "https://unpluglock.com/img/icon.png",
+        "screenshot": "https://unpluglock.com/img/og.jpg",
+        "description": "Free tray app for Windows that locks your laptop the moment the charger is unplugged, so whoever grabs it gets a lock screen instead of your signed-in accounts.",
+        "applicationCategory": "SecurityApplication",
+        "operatingSystem": "Windows 10, Windows 11",
+        "softwareVersion": "1.2.0",
+        "fileSize": "160KB",
+        "license": "https://opensource.org/licenses/MIT",
+        "downloadUrl": "https://github.com/itsyohanes/UnplugLock/releases/latest",
+        "sameAs": "https://github.com/itsyohanes/UnplugLock",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "featureList": [
+          "Locks Windows when the laptop switches from AC power to battery",
+          "Optional lock delay of 1 to 10 seconds",
+          "Password protection with a recovery code",
+          "Guard process that restarts the app if it is closed",
+          "No admin rights needed"
+        ]
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "What happens if someone grabs my laptop while it's charging?",
+            "acceptedAnswer": { "@type": "Answer", "text": "To grab a charging laptop they have to pull the charger out first. The moment it drops to battery, UnplugLock locks Windows, so they're stuck at the lock screen instead of inside your email, browser and accounts." }
+          },
+          {
+            "@type": "Question",
+            "name": "Do I need a password on my Windows account?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. UnplugLock locks the screen, but if your account has no password, PIN or Windows Hello, anyone can click straight back in. Set one up in Settings → Accounts → Sign-in options." }
+          },
+          {
+            "@type": "Question",
+            "name": "Does it sound an alarm when the laptop is unplugged?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. Instead of an alarm it locks Windows, the same as pressing Win + L, so your files and accounts stay protected." }
+          },
+          {
+            "@type": "Question",
+            "name": "Is it an alternative to a Kensington lock?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Not really, they do different jobs. A Kensington lock physically stops someone walking off with your laptop. UnplugLock can't do that, but if someone does take it, they're stuck at the lock screen instead of going through your photos, emails and accounts. If you've got a cable lock, use both." }
+          },
+          {
+            "@type": "Question",
+            "name": "Does it keep my files safe if the laptop is stolen?",
+            "acceptedAnswer": { "@type": "Answer", "text": "It keeps whoever took it out of your signed-in session: your email, browser, apps and everything you had open. To protect the files on the drive as well, even if someone takes the drive out, turn on BitLocker or Device encryption in Windows settings. The two work well together." }
+          },
+          {
+            "@type": "Question",
+            "name": "Does it work on Windows 11 and Windows 10?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. It runs on Windows 11 and on Windows 10 from the April 2018 Update onwards, using the .NET Framework that's already built in. It doesn't need admin rights." }
+          },
+          {
+            "@type": "Question",
+            "name": "Is UnplugLock free?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. It's free and open source under the MIT licence, with no account, no ads and no internet connection." }
+          },
+          {
+            "@type": "Question",
+            "name": "Does UnplugLock collect any data?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. There's no telemetry, analytics or tracking of any kind, and UnplugLock never connects to the internet, so nothing about you or your laptop is ever sent anywhere. Its settings stay on your laptop, and the code is open source if you'd like to check." }
+          },
+          {
+            "@type": "Question",
+            "name": "Can a thief just close it?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Not easily. With a password set it can't be turned off or exited without the password, and a guard process restarts it within about a second if it's closed. It's a deterrent rather than a guarantee, though: someone with admin rights who knows what they're doing can still stop it, so use a strong Windows password too." }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <header class="top wrap">
+    <a class="brand" href="/">
+      <img src="img/icon.svg" alt="" width="26" height="26">
+      UnplugLock
+    </a>
+    <nav aria-label="Main">
+      <a href="#how">How it works</a>
+      <a href="#questions">Questions</a>
+      <a href="https://github.com/itsyohanes/UnplugLock" data-umami-event="github" data-umami-event-location="header">GitHub</a>
+      <a class="button small" href="https://github.com/itsyohanes/UnplugLock/releases/latest" data-umami-event="download" data-umami-event-location="header">Download</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero wrap">
+      <h1>Pull the charger, <span class="line">your laptop locks.</span></h1>
+
+      <p class="lede">A tiny, free Windows app. If someone grabs your laptop off the charger, they get a lock screen, not your accounts.</p>
+
+      <div class="cta">
+        <a class="button" href="https://github.com/itsyohanes/UnplugLock/releases/latest" data-umami-event="download" data-umami-event-location="hero">Download for Windows</a>
+        <a class="link" href="https://github.com/itsyohanes/UnplugLock" data-umami-event="github" data-umami-event-location="hero">View the source &rarr;</a>
+      </div>
+
+      <p class="meta"><span>Version 1.2.0</span><span>160 KB</span><span>Windows 10 &amp; 11</span><span>Free, MIT licence</span></p>
+
+      <!-- scroll-driven laptop: the screen tilts up and wakes, the cable slides out, Windows locks -->
+      <div class="scroll-scene">
+        <h2 id="how" class="sr-only">How it works</h2>
+        <div class="scene">
+          <div class="laptop" role="img" aria-label="A laptop on charge. As you scroll, its screen tilts up, the charging cable is pulled out of the side, and the screen switches to the Windows lock screen.">
+            <div class="lid">
+              <div class="screen">
+                <div class="desktop">
+                  <div class="tb">
+                    <span class="tb-icons"><i></i><i></i><i></i><i></i><i></i></span>
+                    <span class="tb-tray">
+                      <svg class="battery" viewBox="0 0 26 14" aria-hidden="true"><rect x="1" y="1" width="21" height="12" rx="3" fill="none" stroke="#fff" stroke-width="1.6"/><rect x="23" y="4.5" width="2.2" height="5" rx="1" fill="#fff"/><rect x="3.4" y="3.4" width="12" height="7.2" rx="1.4" fill="#fff"/><path class="bolt" d="M13.5 2 L 8.5 7.6 H 12 L 10.5 12 L 15.5 6.4 H 12 Z" fill="#2c6be0" stroke="#fff" stroke-width="0.9" stroke-linejoin="round"/></svg>
+                      <span>14:32</span>
+                    </span>
+                  </div>
+                </div>
+                <div class="lockscreen">
+                  <span class="lock-time">14:32</span>
+                  <span class="lock-date">Sunday, 22 November</span>
+                  <svg class="lock-icon" viewBox="0 0 48 56" aria-hidden="true"><path d="M12 25 V16 a12 12 0 0 1 24 0 V25" fill="none" stroke="#fff" stroke-width="5.5"/><rect x="4" y="24" width="40" height="30" rx="6" fill="#fff"/><circle cx="24" cy="36.5" r="4.2" fill="#1d3f86"/><rect x="22.2" y="38" width="3.6" height="8.5" rx="1.8" fill="#1d3f86"/></svg>
+                </div>
+                <span class="glare"></span>
+              </div>
+              <span class="camera"></span>
+            </div>
+            <div class="base">
+              <span class="deck"></span>
+              <span class="edge"><span class="notch"></span><span class="led"></span></span>
+            </div>
+            <div class="cable-track">
+              <div class="charger">
+                <span class="plug"></span>
+                <span class="cord"></span>
+              </div>
+            </div>
+            <span class="floor-shadow"></span>
+          </div>
+          <ol class="beats">
+            <li class="is-on">
+              <span class="beat-title">Leave it charging</span>
+              <span class="beat-body">UnplugLock sits in the system tray and watches the power cable.</span>
+            </li>
+            <li>
+              <span class="beat-title">Someone pulls the cable</span>
+              <span class="beat-body">At the wall or at the laptop, it doesn't matter.</span>
+            </li>
+            <li>
+              <span class="beat-title">Windows locks</span>
+              <span class="beat-body">Instantly, or after a short delay you choose.</span>
+            </li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="section wrap" aria-labelledby="features">
+      <div class="tray">
+        <div class="desk" role="img" aria-label="UnplugLock's right-click menu in the Windows system tray">
+          <div class="menu">
+            <div class="item dim">Plugged in</div>
+            <hr>
+            <div class="item on">Enabled</div>
+            <div class="item sub">Lock delay</div>
+            <div class="item on dim">Start with Windows (required by guard)</div>
+            <div class="item on">Guard process (auto-restart)</div>
+            <div class="item">Hide tray icon</div>
+            <div class="item sub">Password</div>
+            <hr>
+            <div class="item hover">Lock now (test)</div>
+            <div class="item">Exit</div>
+          </div>
+          <div class="taskbar">
+            <span class="chev">&#x2C4;</span>
+            <img src="img/icon.png" alt="" width="16" height="16">
+            <span class="clock">14:32<br>22/11/2026</span>
+          </div>
+        </div>
+        <div>
+          <h2 id="features" class="heading">Lives in the tray</h2>
+          <dl class="facts">
+            <div><dt>Optional delay</dt><dd>Lock instantly or after 1&ndash;10 seconds, so a loose cable doesn't lock you out.</dd></div>
+            <div><dt>Hard to switch off</dt><dd>Set a password to stop anyone else turning it off or closing it.</dd></div>
+            <div><dt>Can hide its icon</dt><dd>Hide the tray icon and UnplugLock keeps running out of sight. Open it again from the Start menu to bring the icon back.</dd></div>
+            <div><dt>Checks your Windows sign-in</dt><dd>Locking only helps if Windows asks for a password, PIN or Windows Hello. If your account has none, UnplugLock tells you.</dd></div>
+            <div><dt>No admin rights needed</dt><dd>Installs and runs as your normal user. Right-click the icon for settings.</dd></div>
+          </dl>
+        </div>
+      </div>
+    </section>
+
+    <section class="section wrap split" aria-labelledby="questions">
+      <h2 id="questions" class="heading">Questions</h2>
+      <div class="faq">
+        <details>
+          <summary data-umami-event="faq" data-umami-event-question="grabbed">What happens if someone grabs my laptop while it's charging?</summary>
+          <p>To grab a charging laptop they have to pull the charger out first. The moment it drops to battery, UnplugLock locks Windows, so they're stuck at the lock screen instead of inside your email, browser and accounts.</p>
+        </details>
+        <details>
+          <summary data-umami-event="faq" data-umami-event-question="password">Do I need a password on my Windows account?</summary>
+          <p>Yes. UnplugLock locks the screen, but if your account has no password, PIN or Windows Hello, anyone can click straight back in. Set one up in Settings &rarr; Accounts &rarr; Sign-in options.</p>
+        </details>
+        <details>
+          <summary data-umami-event="faq" data-umami-event-question="alarm">Does it sound an alarm when the laptop is unplugged?</summary>
+          <p>No. Instead of an alarm it locks Windows, the same as pressing Win + L, so your files and accounts stay protected.</p>
+        </details>
+        <details>
+          <summary data-umami-event="faq" data-umami-event-question="kensington">Is it an alternative to a Kensington lock?</summary>
+          <p>Not really, they do different jobs. A Kensington lock physically stops someone walking off with your laptop. UnplugLock can't do that, but if someone does take it, they're stuck at the lock screen instead of going through your photos, emails and accounts. If you've got a cable lock, use both.</p>
+        </details>
+        <details>
+          <summary data-umami-event="faq" data-umami-event-question="files">Does it keep my files safe if the laptop is stolen?</summary>
+          <p>It keeps whoever took it out of your signed-in session: your email, browser, apps and everything you had open. To protect the files on the drive as well, even if someone takes the drive out, turn on BitLocker or Device encryption in Windows settings. The two work well together.</p>
+        </details>
+        <details>
+          <summary data-umami-event="faq" data-umami-event-question="windows-versions">Does it work on Windows 11 and Windows 10?</summary>
+          <p>Yes. It runs on Windows 11 and on Windows 10 from the April 2018 Update onwards, using the .NET Framework that's already built in. It doesn't need admin rights.</p>
+        </details>
+        <details>
+          <summary data-umami-event="faq" data-umami-event-question="free">Is UnplugLock free?</summary>
+          <p>Yes. It's free and open source under the MIT licence, with no account, no ads and no internet connection.</p>
+        </details>
+        <details>
+          <summary data-umami-event="faq" data-umami-event-question="privacy">Does UnplugLock collect any data?</summary>
+          <p>No. There's no telemetry, analytics or tracking of any kind, and UnplugLock never connects to the internet, so nothing about you or your laptop is ever sent anywhere. Its settings stay on your laptop, and the code is open source if you'd like to check.</p>
+        </details>
+        <details>
+          <summary data-umami-event="faq" data-umami-event-question="close-it">Can a thief just close it?</summary>
+          <p>Not easily. With a password set it can't be turned off or exited without the password, and a guard process restarts it within about a second if it's closed. It's a deterrent rather than a guarantee, though: someone with admin rights who knows what they're doing can still stop it, so use a strong Windows password too.</p>
+        </details>
+            </div>
+    </section>
+  </main>
+
+  <footer class="footer wrap">
+    <div class="footer-row">
+      <span>MIT licence &middot; no account, no ads, works offline</span>
+      <nav aria-label="Footer">
+        <a href="https://github.com/itsyohanes/UnplugLock" data-umami-event="github" data-umami-event-location="footer">GitHub</a>
+        <a href="https://github.com/itsyohanes/UnplugLock/releases">Releases</a>
+        <a href="https://github.com/itsyohanes/UnplugLock/releases/latest" data-umami-event="download" data-umami-event-location="footer">Download</a>
+      </nav>
+    </div>
+    <p class="wordmark" aria-hidden="true">UnplugLock</p>
+  </footer>
+  <script>
+    // hero laptop: scroll progress (0 at the top of the page, 1 when the laptop unpins)
+    // tilts the screen up, pulls the cable out, then shows the lock screen
+    (function () {
+      var wrap = document.querySelector(".scroll-scene");
+      var scene = wrap.querySelector(".scene");
+      var laptop = wrap.querySelector(".laptop");
+      var beats = wrap.querySelectorAll(".beats li");
+      var marks = [0, 0.38, 0.64, 0.86];
+      var still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      var queued = false;
+
+      function clamp(x) { return x < 0 ? 0 : x > 1 ? 1 : x; }
+      function ease(x) { return x * x * (3 - 2 * x); }
+      function part(p, from, to) { return ease(clamp((p - from) / (to - from))); }
+
+      function render(p) {
+        laptop.style.setProperty("--lid", (-32 + 32 * part(p, 0, 0.3)).toFixed(2) + "deg");
+        laptop.style.setProperty("--on", part(p, 0.04, 0.26).toFixed(3));
+        var pull = part(p, 0.4, 0.6);
+        laptop.style.setProperty("--pull", pull.toFixed(3));
+        laptop.classList.toggle("unplugged", pull > 0.08);
+        laptop.style.setProperty("--lock", part(p, 0.66, 0.84).toFixed(3));
+
+        // captions: each line fills across its part of the scroll, and the current one is darker
+        for (var i = 0; i < beats.length; i++) {
+          var from = marks[i], to = marks[i + 1];
+          beats[i].style.setProperty("--fill", clamp((p - from) / (to - from)).toFixed(3));
+          beats[i].classList.toggle("is-on", p >= from && (p < to || i === beats.length - 1));
+        }
+      }
+
+      function update() {
+        queued = false;
+        var top = wrap.getBoundingClientRect().top + window.scrollY;
+        var stick = parseFloat(getComputedStyle(scene).top) || 0;
+        var end = top + wrap.offsetHeight - scene.offsetHeight - stick;
+        render(end > 0 ? clamp(window.scrollY / end) : 1);
+      }
+
+      function queue() {
+        if (!queued) {
+          queued = true;
+          requestAnimationFrame(update);
+        }
+      }
+
+      // no motion wanted: show the end state, with all three steps lit
+      if (still) {
+        render(1);
+        for (var i = 0; i < beats.length; i++) beats[i].classList.add("is-on");
+        return;
+      }
+      window.addEventListener("scroll", queue, { passive: true });
+      window.addEventListener("resize", queue);
+      update();
+    })();
+  </script>
+</body>
+</html>
