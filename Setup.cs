@@ -17,7 +17,7 @@ namespace UnplugLock
 {
     internal static class SetupProgram
     {
-        public const string Version = "1.1.0";
+        public const string Version = "1.2.0";
 
         private const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\UnplugLock";
         private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
@@ -60,8 +60,7 @@ namespace UnplugLock
         [STAThread]
         private static int Main(string[] args)
         {
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
+            Ui.Init();
 
             bool silent = HasArg(args, "/silent");
             bool uninstall = HasArg(args, "/uninstall") ||
@@ -324,90 +323,35 @@ namespace UnplugLock
         }
     }
 
-    internal sealed class SetupForm : Form
+    internal sealed class SetupForm : Dialog
     {
+        private readonly bool _upgrading;
         private readonly CheckBox _startup;
         private readonly CheckBox _desktop;
         private readonly CheckBox _launch;
         private readonly CheckBox _guard;
-        private readonly Button _install;
-        private readonly Button _cancel;
+        private readonly RoundButton _install;
+        private readonly RoundButton _cancel;
 
-        public SetupForm()
+        public SetupForm() : this(SetupProgram.IsInstalled) { }
+
+        private SetupForm(bool upgrading)
+            : base("UnplugLock Setup", upgrading ? "Update UnplugLock" : "Install UnplugLock",
+                   "Locks your laptop the moment the charger is unplugged.", 440, true)
         {
-            bool upgrading = SetupProgram.IsInstalled;
+            _upgrading = upgrading;
+            MinimizeBox = true;
 
-            Text = "UnplugLock Setup";
-            Icon = TrayApp.AppIcon;
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox = false;
-            StartPosition = FormStartPosition.CenterScreen;
-            Font = SystemFonts.MessageBoxFont;
-            AutoScaleMode = AutoScaleMode.Font;
-            AutoSize = true;
-            AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            BackColor = SystemColors.Window;
+            _guard = Option("Keep UnplugLock running", 0);
+            AddText("If someone closes it, it starts itself again straight away.", Ui.Muted, Ui.Small, 14)
+                .Padding = new Padding(Ui.S(18), 0, 0, 0);
+            _startup = Option("Start UnplugLock when I sign in to Windows", 12);
+            _desktop = Option("Create a desktop shortcut", 12);
+            _launch = Option("Open UnplugLock when setup finishes", 22);
+            _guard.Checked = true;
+            _startup.Checked = true;
+            _launch.Checked = true;
 
-            var root = new TableLayoutPanel
-            {
-                ColumnCount = 1,
-                AutoSize = true,
-                AutoSizeMode = AutoSizeMode.GrowAndShrink,
-                Padding = new Padding(20, 18, 20, 16)
-            };
-
-            // header
-            var header = new TableLayoutPanel
-            {
-                ColumnCount = 2,
-                RowCount = 2,
-                AutoSize = true,
-                Margin = new Padding(0, 0, 0, 14)
-            };
-            var logo = new PictureBox
-            {
-                Image = Logo.Render(56, true),
-                Size = new Size(56, 56),
-                SizeMode = PictureBoxSizeMode.CenterImage,
-                Margin = new Padding(0, 0, 14, 0)
-            };
-            header.Controls.Add(logo, 0, 0);
-            header.SetRowSpan(logo, 2);
-            header.Controls.Add(new Label
-            {
-                Text = upgrading ? "Update UnplugLock" : "Install UnplugLock",
-                Font = new Font(Font.FontFamily, 15f, FontStyle.Bold),
-                AutoSize = true,
-                Margin = new Padding(0, 4, 0, 2)
-            }, 1, 0);
-            header.Controls.Add(new Label
-            {
-                Text = "Locks your laptop the moment the charger is unplugged.",
-                ForeColor = SystemColors.GrayText,
-                AutoSize = true,
-                Margin = new Padding(0)
-            }, 1, 1);
-            root.Controls.Add(header);
-
-            root.Controls.Add(new Label
-            {
-                Text = "Installs to: " + SetupProgram.InstallDir + "\r\nVersion " + SetupProgram.Version +
-                       " - no administrator rights needed",
-                ForeColor = SystemColors.GrayText,
-                AutoSize = true,
-                MaximumSize = new Size(420, 0),
-                Margin = new Padding(0, 0, 0, 12)
-            });
-
-            _startup = new CheckBox { Text = "Start UnplugLock when I sign in to Windows", Checked = true, AutoSize = true };
-            _desktop = new CheckBox { Text = "Create a desktop shortcut", Checked = false, AutoSize = true };
-            _launch = new CheckBox { Text = "Run UnplugLock when setup finishes", Checked = true, AutoSize = true };
-            _guard = new CheckBox
-            {
-                Text = "Keep UnplugLock running (restarts itself if it's closed)",
-                Checked = true,
-                AutoSize = true
-            };
             // the guard always starts with Windows
             _guard.CheckedChanged += delegate
             {
@@ -416,31 +360,33 @@ namespace UnplugLock
                 _startup.Enabled = !_guard.Checked;
             };
             _startup.Enabled = false;
-            root.Controls.Add(_guard);
-            root.Controls.Add(_startup);
-            root.Controls.Add(_desktop);
-            root.Controls.Add(_launch);
 
-            _install = new Button { Text = upgrading ? "Update" : "Install", AutoSize = true, MinimumSize = new Size(88, 0) };
-            _cancel = new Button { Text = "Cancel", AutoSize = true, MinimumSize = new Size(88, 0), DialogResult = DialogResult.Cancel };
+            AddText("Installs to", Ui.Muted, Ui.Small, 2);
+            AddText(SetupProgram.InstallDir, Ui.Ink, Ui.Small, 6);
+            AddText("Just for your account, so it doesn't need administrator rights.", Ui.Muted, Ui.Small, 0);
+
+            SetFooterNote(Ui.Text("Version " + SetupProgram.Version, ContentWidth, Ui.Muted, Ui.Small, 0));
+            _cancel = AddButton("Cancel", false);
+            _install = AddButton(upgrading ? "Update" : "Install", true);
             _install.Click += OnInstall;
             // DialogResult doesn't close a non-modal form
             _cancel.Click += delegate { Close(); };
 
-            var buttons = new FlowLayoutPanel
-            {
-                FlowDirection = FlowDirection.RightToLeft,
-                AutoSize = true,
-                Anchor = AnchorStyles.Right,
-                Margin = new Padding(0, 18, 0, 0)
-            };
-            buttons.Controls.Add(_cancel);
-            buttons.Controls.Add(_install);
-            root.Controls.Add(buttons);
-
-            Controls.Add(root);
             AcceptButton = _install;
             CancelButton = _cancel;
+        }
+
+        private CheckBox Option(string text, float spaceAfter)
+        {
+            var box = new CheckBox
+            {
+                Text = text,
+                AutoSize = true,
+                ForeColor = Ui.Ink,
+                Margin = Ui.S(0, 0, 0, spaceAfter)
+            };
+            Body.Controls.Add(box);
+            return box;
         }
 
         private void OnInstall(object sender, EventArgs e)
@@ -453,25 +399,48 @@ namespace UnplugLock
 
             _install.Enabled = false;
             _cancel.Enabled = false;
+            _install.Text = _upgrading ? "Updating..." : "Installing...";
             Cursor = Cursors.WaitCursor;
+            Update();
             try
             {
                 SetupProgram.Install(_startup.Checked, _desktop.Checked, _launch.Checked, _guard.Checked);
                 Cursor = Cursors.Default;
-                MessageBox.Show(this,
-                    "UnplugLock is installed.\n\nLook for the padlock icon in the system tray " +
-                    "(you may need to click the ^ arrow next to the clock).",
-                    "UnplugLock", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                Close();
+                ShowDone(_launch.Checked);
             }
             catch (Exception ex)
             {
                 Cursor = Cursors.Default;
+                _install.Text = _upgrading ? "Update" : "Install";
                 MessageBox.Show(this, "Setup couldn't finish:\n\n" + ex.Message, "UnplugLock",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
                 _install.Enabled = true;
                 _cancel.Enabled = true;
             }
+        }
+
+        // swaps the options for a short "you're done" page
+        private void ShowDone(bool launched)
+        {
+            SuspendLayout();
+            Heading.Text = _upgrading ? "UnplugLock is updated" : "UnplugLock is installed";
+            Subheading.Text = "Your laptop now locks when the charger is pulled out.";
+
+            Body.Controls.Clear();
+            AddText(launched
+                    ? "It's running in the system tray, next to the clock. If you can't see the icon, click the ^ arrow there."
+                    : "Open it from the Start menu whenever you're ready. It sits in the system tray, next to the clock.",
+                Ui.Ink, Ui.Body, 10);
+            AddText("Right-click the icon to set a lock delay, add a password, or turn it off for a while.",
+                Ui.Muted, Ui.Body, 0);
+
+            _cancel.Visible = false;
+            _install.Text = "Finish";
+            _install.Enabled = true;
+            _install.Click -= OnInstall;
+            _install.Click += delegate { Close(); };
+            ResumeLayout(true);
+            _install.Focus();
         }
     }
 }

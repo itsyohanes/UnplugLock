@@ -36,6 +36,8 @@ namespace UnplugLock
             if (args.Length >= 1 && args[0] == "--guard")
                 return Guard.RunHelper(args);
 
+            Ui.Init();
+
             bool isFirst;
             using (var mutex = new Mutex(true, @"Local\UnplugLock.SingleInstance", out isFirst))
             {
@@ -55,15 +57,13 @@ namespace UnplugLock
                     return 0;
                 }
 
-                Application.EnableVisualStyles();
-                Application.SetCompatibleTextRenderingDefault(false);
                 Application.Run(new TrayApp());
             }
             return 0;
         }
     }
 
-    // padlock + lightning bolt logo
+    // plug-shaped padlock logo
     internal static class Logo
     {
         private static readonly int[] IcoSizes = { 16, 24, 32, 48, 64, 128, 256 };
@@ -82,43 +82,44 @@ namespace UnplugLock
             return bmp;
         }
 
-        // coords are for 256x256, thicker strokes for tiny sizes
+        // a plug whose head is a padlock: two prongs on top, keyhole in the body, cord running off the bottom.
+        // coords are for 256x256, chunkier prongs and keyhole for tiny sizes
         private static void Draw(Graphics g, bool enabled, bool small)
         {
-            Color top = enabled ? Color.FromArgb(56, 132, 255) : Color.FromArgb(150, 150, 150);
-            Color bottom = enabled ? Color.FromArgb(28, 78, 200) : Color.FromArgb(100, 100, 100);
+            Color tileColor = enabled ? Color.FromArgb(44, 107, 224) : Color.FromArgb(128, 128, 128);
 
             // background
-            var tile = new RectangleF(8, 8, 240, 240);
-            using (var path = RoundedRect(tile, 56))
-            using (var brush = new LinearGradientBrush(tile, top, bottom, LinearGradientMode.Vertical))
+            using (var path = RoundedRect(new RectangleF(8, 8, 240, 240), 56))
+            using (var brush = new SolidBrush(tileColor))
                 g.FillPath(brush, path);
 
-            // shackle
-            float stroke = small ? 34 : 26;
-            using (var pen = new Pen(Color.White, stroke))
+            using (var white = new SolidBrush(Color.White))
             {
-                pen.StartCap = LineCap.Flat;
-                pen.EndCap = LineCap.Flat;
-                g.DrawArc(pen, 82, 42, 92, 104, 180, 180);
-                g.DrawLine(pen, 82, 93, 82, 128);
-                g.DrawLine(pen, 174, 93, 174, 128);
+                // prongs
+                float prong = small ? 32 : 26;
+                float gap = small ? 26 : 32;
+                float left = 128 - gap / 2 - prong;
+                foreach (float x in new[] { left, 128 + gap / 2 })
+                    using (var path = RoundedRect(new RectangleF(x, 40, prong, 88), prong / 2))
+                        g.FillPath(white, path);
+
+                // body
+                using (var path = RoundedRect(new RectangleF(50, 104, 156, 112), 30))
+                    g.FillPath(white, path);
+
+                // cord, down to the bottom edge of the tile
+                g.FillRectangle(white, 114, 200, 28, 48);
             }
 
-            // body
-            using (var path = RoundedRect(new RectangleF(52, 118, 152, 106), 20))
-            using (var brush = new SolidBrush(Color.White))
-                g.FillPath(brush, path);
-
-            // bolt
-            var bolt = new[]
+            // keyhole
+            float r = small ? 22 : 17;
+            float stem = small ? 20 : 16;
+            using (var brush = new SolidBrush(tileColor))
             {
-                new PointF(140, 130), new PointF(98, 178), new PointF(124, 178),
-                new PointF(112, 214), new PointF(158, 162), new PointF(132, 162),
-                new PointF(146, 130)
-            };
-            using (var brush = new SolidBrush(bottom))
-                g.FillPolygon(brush, bolt);
+                g.FillEllipse(brush, 128 - r, 150 - r, r * 2, r * 2);
+                using (var path = RoundedRect(new RectangleF(128 - stem / 2, 154, stem, 32), stem / 2))
+                    g.FillPath(brush, path);
+            }
         }
 
         private static GraphicsPath RoundedRect(RectangleF r, float radius)
@@ -214,6 +215,404 @@ namespace UnplugLock
 
     // process guard: UnplugLock and UnplugLockHelper.exe (a copy of this exe) restart each other,
     // and both deny terminate/suspend to normal processes. an elevated admin can still kill them.
+    // shared look for every window: colours, fonts, spacing (scaled for the screen's DPI), buttons and the tray menu
+    internal static class Ui
+    {
+        [DllImport("user32.dll")]
+        private static extern bool SetProcessDPIAware();
+
+        public static readonly Color Brand = Color.FromArgb(44, 107, 224);
+        public static readonly Color BrandHover = Color.FromArgb(36, 92, 201);
+        public static readonly Color BrandPressed = Color.FromArgb(29, 79, 179);
+        public static readonly Color BrandBand = Color.FromArgb(31, 87, 195);
+        public static readonly Color Ink = Color.FromArgb(27, 27, 27);
+        public static readonly Color Muted = Color.FromArgb(96, 96, 96);
+        public static readonly Color Line = Color.FromArgb(229, 229, 229);
+        public static readonly Color FooterBack = Color.FromArgb(243, 243, 243);
+        public static readonly Color Error = Color.FromArgb(196, 43, 28);
+
+        private static float _scale;
+        private static Font _body, _small, _title, _strong;
+
+        // call first thing, before any window or icon is made, so text and icons are sharp on scaled screens
+        public static void Init()
+        {
+            try { SetProcessDPIAware(); }
+            catch { /* old Windows, stays blurry */ }
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+        }
+
+        public static float Scale
+        {
+            get
+            {
+                if (_scale == 0)
+                    using (var g = Graphics.FromHwnd(IntPtr.Zero))
+                        _scale = g.DpiX / 96f;
+                return _scale;
+            }
+        }
+
+        public static int S(float px) { return (int)Math.Round(px * Scale); }
+        public static Padding S(float l, float t, float r, float b) { return new Padding(S(l), S(t), S(r), S(b)); }
+
+        public static Font Body { get { return _body ?? (_body = new Font("Segoe UI", 9.75f)); } }
+        public static Font Small { get { return _small ?? (_small = new Font("Segoe UI", 9f)); } }
+        public static Font Strong { get { return _strong ?? (_strong = new Font("Segoe UI Semibold", 9.75f)); } }
+        public static Font Title { get { return _title ?? (_title = new Font("Segoe UI Semibold", 14.25f)); } }
+
+        public static Label Text(string text, int width, Color color, Font font, float spaceAfter)
+        {
+            return new TextLabel
+            {
+                Text = text,
+                AutoSize = true,
+                MaximumSize = new Size(width, 0),
+                ForeColor = color,
+                Font = font,
+                BackColor = Color.Transparent,
+                Margin = new Padding(0, 0, 0, S(spaceAfter))
+            };
+        }
+
+        public static GraphicsPath Rounded(RectangleF r, float radius)
+        {
+            float d = Math.Min(radius * 2, Math.Min(r.Width, r.Height));
+            var p = new GraphicsPath();
+            p.AddArc(r.X, r.Y, d, d, 180, 90);
+            p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+            p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+            p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+            p.CloseFigure();
+            return p;
+        }
+
+        public static void StyleMenu(ToolStripDropDown menu)
+        {
+            menu.Renderer = new MenuRenderer();
+            menu.Font = Body;
+            menu.Padding = S(4, 4, 4, 4);
+            foreach (ToolStripItem item in menu.Items)
+            {
+                if (item is ToolStripSeparator)
+                    continue;
+                item.Padding = S(4, 4, 8, 4);
+                var sub = item as ToolStripMenuItem;
+                if (sub != null && sub.HasDropDownItems)
+                    StyleMenu(sub.DropDown);
+            }
+        }
+
+        private sealed class MenuColors : ProfessionalColorTable
+        {
+            public override Color ToolStripDropDownBackground { get { return Color.White; } }
+            public override Color ImageMarginGradientBegin { get { return Color.White; } }
+            public override Color ImageMarginGradientMiddle { get { return Color.White; } }
+            public override Color ImageMarginGradientEnd { get { return Color.White; } }
+            public override Color MenuBorder { get { return Color.FromArgb(214, 214, 214); } }
+            public override Color MenuItemBorder { get { return Color.Transparent; } }
+            public override Color MenuItemSelected { get { return Color.FromArgb(240, 240, 240); } }
+            public override Color SeparatorDark { get { return Line; } }
+            public override Color SeparatorLight { get { return Color.White; } }
+        }
+
+        // flat, light menu with rounded hover rows, like the Windows 11 ones
+        private sealed class MenuRenderer : ToolStripProfessionalRenderer
+        {
+            public MenuRenderer() : base(new MenuColors()) { RoundedEdges = false; }
+
+            protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
+            {
+                if (!e.Item.Selected || !e.Item.Enabled)
+                    return;
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                var r = new RectangleF(S(2), 0, e.Item.Width - S(4), e.Item.Height - 1);
+                using (var path = Rounded(r, S(4)))
+                using (var brush = new SolidBrush(Color.FromArgb(240, 240, 240)))
+                    e.Graphics.FillPath(brush, path);
+            }
+
+            protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
+            {
+                int y = e.Item.Height / 2;
+                using (var pen = new Pen(Line))
+                    e.Graphics.DrawLine(pen, S(8), y, e.Item.Width - S(8), y);
+            }
+
+            protected override void OnRenderItemCheck(ToolStripItemImageRenderEventArgs e)
+            {
+                // just a tick, no box behind it
+                var r = e.ImageRectangle;
+                float x = r.X + r.Width * 0.2f, y = r.Y + r.Height * 0.52f, w = r.Width * 0.6f;
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                using (var pen = new Pen(e.Item.Enabled ? Ink : Color.FromArgb(160, 160, 160), Math.Max(1.5f, 1.6f * Scale)))
+                {
+                    pen.StartCap = LineCap.Round;
+                    pen.EndCap = LineCap.Round;
+                    pen.LineJoin = LineJoin.Round;
+                    e.Graphics.DrawLines(pen, new[]
+                    {
+                        new PointF(x, y), new PointF(x + w * 0.35f, y + w * 0.32f), new PointF(x + w, y - w * 0.38f)
+                    });
+                }
+            }
+
+            protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
+            {
+                e.TextColor = e.Item.Enabled ? Ink : Color.FromArgb(128, 128, 128);
+                base.OnRenderItemText(e);
+            }
+
+            protected override void OnRenderArrow(ToolStripArrowRenderEventArgs e)
+            {
+                e.ArrowColor = Muted;
+                base.OnRenderArrow(e);
+            }
+        }
+    }
+
+    // a label with no built-in side padding, so text in different sizes lines up on the same left edge
+    internal sealed class TextLabel : Label
+    {
+        private const TextFormatFlags Flags =
+            TextFormatFlags.NoPadding | TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl;
+
+        public TextLabel()
+        {
+            SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.SupportsTransparentBackColor, true);
+        }
+
+        public override Size GetPreferredSize(Size proposedSize)
+        {
+            int max = MaximumSize.Width > 0 ? MaximumSize.Width - Padding.Horizontal : int.MaxValue;
+            var s = TextRenderer.MeasureText(Text.Length == 0 ? " " : Text, Font, new Size(max, int.MaxValue), Flags);
+            return new Size(Math.Min(s.Width, max) + Padding.Horizontal, s.Height + Padding.Vertical);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var r = new Rectangle(Padding.Left, Padding.Top, Width - Padding.Horizontal, Height - Padding.Vertical);
+            TextRenderer.DrawText(e.Graphics, Text, Font, r, ForeColor, Flags);
+        }
+    }
+
+    // rounded push button, blue when it's the main action
+    internal sealed class RoundButton : Button
+    {
+        private readonly bool _primary;
+        private bool _hover, _down;
+
+        public RoundButton(string text, bool primary)
+        {
+            _primary = primary;
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+                     ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+            FlatStyle = FlatStyle.Flat;
+            FlatAppearance.BorderSize = 0;
+            Font = Ui.Body;
+            Margin = new Padding(Ui.S(8), 0, 0, 0);
+            Text = text;
+        }
+
+        protected override void OnTextChanged(EventArgs e)
+        {
+            base.OnTextChanged(e);
+            int w = TextRenderer.MeasureText(Text, Font).Width + Ui.S(40);
+            Size = new Size(Math.Max(Ui.S(96), w), Ui.S(32));
+        }
+
+        protected override void OnMouseEnter(EventArgs e) { _hover = true; Invalidate(); base.OnMouseEnter(e); }
+        protected override void OnMouseLeave(EventArgs e) { _hover = false; _down = false; Invalidate(); base.OnMouseLeave(e); }
+        protected override void OnMouseDown(MouseEventArgs e) { _down = true; Invalidate(); base.OnMouseDown(e); }
+        protected override void OnMouseUp(MouseEventArgs e) { _down = false; Invalidate(); base.OnMouseUp(e); }
+        protected override void OnEnabledChanged(EventArgs e) { Invalidate(); base.OnEnabledChanged(e); }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            // corners show whatever is behind; the button rows are transparent, so use the first solid colour up the tree
+            Color behind = SystemColors.Control;
+            for (Control c = Parent; c != null; c = c.Parent)
+                if (c.BackColor.A == 255)
+                {
+                    behind = c.BackColor;
+                    break;
+                }
+            g.Clear(behind);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+
+            Color fill, border, text;
+            if (_primary)
+            {
+                fill = !Enabled ? Color.FromArgb(160, 187, 238) : _down ? Ui.BrandPressed : _hover ? Ui.BrandHover : Ui.Brand;
+                border = fill;
+                text = Color.White;
+            }
+            else
+            {
+                fill = _down ? Color.FromArgb(235, 235, 235) : _hover ? Color.FromArgb(246, 246, 246) : Color.White;
+                border = Color.FromArgb(208, 208, 208);
+                text = Enabled ? Ui.Ink : Color.FromArgb(160, 160, 160);
+            }
+
+            var r = new RectangleF(0.5f, 0.5f, Width - 1.5f, Height - 1.5f);
+            using (var path = Ui.Rounded(r, Ui.S(5)))
+            {
+                using (var brush = new SolidBrush(fill))
+                    g.FillPath(brush, path);
+                using (var pen = new Pen(border))
+                    g.DrawPath(pen, path);
+            }
+
+            // keyboard focus ring
+            if (Focused && ShowFocusCues)
+            {
+                var f = new RectangleF(1.5f, 1.5f, Width - 3.5f, Height - 3.5f);
+                using (var path = Ui.Rounded(f, Ui.S(4)))
+                using (var pen = new Pen(_primary ? Color.White : Ui.Brand, Math.Max(1f, Ui.Scale)))
+                    g.DrawPath(pen, path);
+            }
+
+            TextRenderer.DrawText(g, Text, Font, ClientRectangle, text,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
+        }
+    }
+
+    // every UnplugLock window: a header with the logo and a title, a white body, and a grey footer with the buttons
+    internal class Dialog : Form
+    {
+        protected readonly int ContentWidth;
+        protected readonly TableLayoutPanel Body;
+        protected readonly TableLayoutPanel Footer;
+        protected readonly FlowLayoutPanel Buttons;
+        protected readonly Label Heading;
+        protected readonly Label Subheading;
+
+        protected Dialog(string windowTitle, string heading, string subheading, int width, bool banner)
+        {
+            ContentWidth = Ui.S(width);
+            int outer = ContentWidth + Ui.S(48);
+
+            Text = windowTitle;
+            Icon = TrayApp.AppIcon;
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            StartPosition = FormStartPosition.CenterScreen;
+            AutoScaleMode = AutoScaleMode.None; // sizes below are already scaled
+            Font = Ui.Body;
+            BackColor = Color.White;
+            AutoSize = true;
+            AutoSizeMode = AutoSizeMode.GrowAndShrink;
+
+            var root = new TableLayoutPanel
+            {
+                ColumnCount = 1,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Margin = Padding.Empty,
+                Padding = Padding.Empty
+            };
+            root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, outer));
+
+            // header
+            var header = new TableLayoutPanel
+            {
+                ColumnCount = 2,
+                RowCount = 2,
+                AutoSize = true,
+                Dock = DockStyle.Fill,
+                Margin = Padding.Empty,
+                Padding = banner ? Ui.S(24, 22, 24, 22) : Ui.S(24, 24, 24, 4),
+                BackColor = banner ? Ui.BrandBand : Color.White
+            };
+            int logoSize = Ui.S(banner ? 52 : 40);
+            var logo = new PictureBox
+            {
+                Image = Logo.Render(logoSize, true),
+                Size = new Size(logoSize, logoSize),
+                Margin = new Padding(0, 0, Ui.S(16), 0),
+                BackColor = Color.Transparent,
+                Anchor = AnchorStyles.Left // centred on the title and subtitle
+            };
+            header.Controls.Add(logo, 0, 0);
+            header.SetRowSpan(logo, 2);
+
+            int textWidth = ContentWidth - logoSize - Ui.S(16);
+            Heading = Ui.Text(heading, textWidth, banner ? Color.White : Ui.Ink, Ui.Title, 2);
+            Heading.Margin = new Padding(0, Ui.S(banner ? 3 : 0), 0, Ui.S(2));
+            Subheading = Ui.Text(subheading, textWidth, banner ? Color.FromArgb(214, 228, 255) : Ui.Muted, Ui.Body, 0);
+            header.Controls.Add(Heading, 1, 0);
+            header.Controls.Add(Subheading, 1, 1);
+            root.Controls.Add(header);
+
+            Body = new TableLayoutPanel
+            {
+                ColumnCount = 1,
+                AutoSize = true,
+                Dock = DockStyle.Fill,
+                Margin = Padding.Empty,
+                Padding = Ui.S(24, 20, 24, 24),
+                BackColor = Color.White
+            };
+            root.Controls.Add(Body);
+
+            // footer: a note or link on the left, buttons on the right
+            Footer = new TableLayoutPanel
+            {
+                ColumnCount = 2,
+                AutoSize = true,
+                Dock = DockStyle.Fill,
+                Margin = Padding.Empty,
+                Padding = Ui.S(24, 14, 24, 14),
+                BackColor = Ui.FooterBack
+            };
+            Footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            Footer.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            Footer.Paint += delegate(object s, PaintEventArgs e)
+            {
+                using (var pen = new Pen(Ui.Line))
+                    e.Graphics.DrawLine(pen, 0, 0, Footer.Width, 0);
+            };
+            Buttons = new FlowLayoutPanel
+            {
+                FlowDirection = FlowDirection.RightToLeft,
+                AutoSize = true,
+                WrapContents = false,
+                Margin = Padding.Empty,
+                Anchor = AnchorStyles.Right,
+                BackColor = Color.Transparent
+            };
+            Footer.Controls.Add(Buttons, 1, 0);
+            root.Controls.Add(Footer);
+
+            Controls.Add(root);
+        }
+
+        protected Label AddText(string text, Color color, Font font, float spaceAfter)
+        {
+            var label = Ui.Text(text, ContentWidth, color, font, spaceAfter);
+            Body.Controls.Add(label);
+            return label;
+        }
+
+        protected void SetFooterNote(Control note)
+        {
+            note.Anchor = AnchorStyles.Left;
+            note.Margin = Padding.Empty;
+            Footer.Controls.Add(note, 0, 0);
+        }
+
+        // laid out right to left: add Cancel first so the main button sits to its left
+        protected RoundButton AddButton(string text, bool primary)
+        {
+            var b = new RoundButton(text, primary);
+            Buttons.Controls.Add(b);
+            return b;
+        }
+    }
+
     internal static class Guard
     {
         public const string StopSignalName = @"Local\UnplugLock.GuardStop"; // main -> helper: stand down
@@ -775,7 +1174,7 @@ namespace UnplugLock
 
     internal enum AskResult { Cancelled, Entered, Recovered }
 
-    internal sealed class PasswordDialog : Form
+    internal sealed class PasswordDialog : Dialog
     {
         private enum Mode { Enter, ChooseNew, RecoveryCode }
 
@@ -785,86 +1184,84 @@ namespace UnplugLock
         private readonly Settings _settings; // for "Forgot password?"
         private readonly TextBox _first;
         private readonly TextBox _second; // only when setting a new password
+        private readonly Label _error;
+
+        private static string TitleFor(Mode mode)
+        {
+            return mode == Mode.ChooseNew ? "Choose a password"
+                 : mode == Mode.RecoveryCode ? "Enter your recovery code"
+                 : "Enter your password";
+        }
+
+        // prompts are written as "...to do this:" - read better as a sentence under the title
+        private static string Sentence(string prompt)
+        {
+            return prompt.EndsWith(":") ? prompt.Substring(0, prompt.Length - 1) + "." : prompt;
+        }
 
         private PasswordDialog(string prompt, Mode mode, Settings settings)
+            : base("UnplugLock", TitleFor(mode), Sentence(prompt), 340, false)
         {
             _mode = mode;
             _settings = settings;
-
-            Text = "UnplugLock";
-            Icon = TrayApp.AppIcon;
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox = false;
-            MinimizeBox = false;
             TopMost = true;
-            StartPosition = FormStartPosition.CenterScreen;
-            Font = SystemFonts.MessageBoxFont;
-            AutoScaleMode = AutoScaleMode.Font;
-            AutoSize = true;
-            AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            Padding = new Padding(12);
 
-            var layout = new TableLayoutPanel
+            AddText(mode == Mode.ChooseNew ? "New password" : mode == Mode.RecoveryCode ? "Recovery code" : "Password",
+                Ui.Ink, Ui.Strong, 6);
+            _first = new TextBox
             {
-                ColumnCount = 1,
-                AutoSize = true,
-                AutoSizeMode = AutoSizeMode.GrowAndShrink
+                UseSystemPasswordChar = mode != Mode.RecoveryCode,
+                Width = ContentWidth,
+                Margin = Padding.Empty
             };
-
-            layout.Controls.Add(new Label
-            {
-                Text = prompt,
-                AutoSize = true,
-                MaximumSize = new Size(320, 0),
-                Margin = new Padding(0, 0, 0, 6)
-            });
-
-            _first = new TextBox { UseSystemPasswordChar = mode != Mode.RecoveryCode, Width = 320 };
             if (mode == Mode.RecoveryCode)
             {
                 _first.CharacterCasing = CharacterCasing.Upper;
                 _first.Font = new Font("Consolas", 11f);
             }
-            layout.Controls.Add(_first);
+            Body.Controls.Add(_first);
 
             if (mode == Mode.ChooseNew)
             {
-                layout.Controls.Add(new Label
-                {
-                    Text = "Confirm password:",
-                    AutoSize = true,
-                    Margin = new Padding(0, 10, 0, 6)
-                });
-                _second = new TextBox { UseSystemPasswordChar = true, Width = 320 };
-                layout.Controls.Add(_second);
+                AddText("At least " + MinLength + " characters.", Ui.Muted, Ui.Small, 0).Margin = Ui.S(0, 6, 0, 16);
+                AddText("Confirm password", Ui.Ink, Ui.Strong, 6);
+                _second = new TextBox { UseSystemPasswordChar = true, Width = ContentWidth, Margin = Padding.Empty };
+                Body.Controls.Add(_second);
             }
+
+            _error = AddText("", Ui.Error, Ui.Small, 0);
+            _error.Margin = Ui.S(0, 10, 0, 0);
+            _error.Visible = false;
 
             if (mode == Mode.Enter && settings != null && settings.HasRecoveryCode)
             {
-                var forgot = new LinkLabel { Text = "Forgot password?", AutoSize = true, Margin = new Padding(0, 8, 0, 0) };
+                var forgot = new LinkLabel
+                {
+                    Text = "Forgot password?",
+                    AutoSize = true,
+                    LinkBehavior = LinkBehavior.HoverUnderline,
+                    LinkColor = Ui.Brand,
+                    ActiveLinkColor = Ui.BrandPressed,
+                    BackColor = Color.Transparent
+                };
                 forgot.LinkClicked += OnForgot;
-                layout.Controls.Add(forgot);
+                SetFooterNote(forgot);
             }
 
-            var ok = new Button { Text = "OK", AutoSize = true };
-            var cancel = new Button { Text = "Cancel", AutoSize = true, DialogResult = DialogResult.Cancel };
+            var cancel = AddButton("Cancel", false);
+            cancel.DialogResult = DialogResult.Cancel;
+            var ok = AddButton(mode == Mode.ChooseNew ? "Set password" : "Continue", true);
             ok.Click += OnOk;
 
-            var buttons = new FlowLayoutPanel
-            {
-                FlowDirection = FlowDirection.RightToLeft,
-                AutoSize = true,
-                Anchor = AnchorStyles.Right,
-                Margin = new Padding(0, 14, 0, 0)
-            };
-            buttons.Controls.Add(cancel);
-            buttons.Controls.Add(ok);
-            layout.Controls.Add(buttons);
-
-            Controls.Add(layout);
             AcceptButton = ok;
             CancelButton = cancel;
             Shown += delegate { Activate(); _first.Focus(); };
+        }
+
+        private void ShowError(string message)
+        {
+            _error.Text = message;
+            _error.Visible = true;
         }
 
         private void OnOk(object sender, EventArgs e)
@@ -873,14 +1270,13 @@ namespace UnplugLock
             {
                 if (_first.Text.Length < MinLength)
                 {
-                    MessageBox.Show(this, "Use at least " + MinLength + " characters.", "UnplugLock",
-                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    ShowError("Use at least " + MinLength + " characters.");
+                    _first.Focus();
                     return;
                 }
                 if (_first.Text != _second.Text)
                 {
-                    MessageBox.Show(this, "The passwords don't match.", "UnplugLock",
-                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    ShowError("The passwords don't match.");
                     _second.SelectAll();
                     _second.Focus();
                     return;
@@ -938,73 +1334,45 @@ namespace UnplugLock
         public static string AskNew()
         {
             using (var d = new PasswordDialog(
-                "Choose a password. You'll need it to turn off, change settings of, or exit UnplugLock.",
+                "You'll need it to turn off, change the settings of, or exit UnplugLock.",
                 Mode.ChooseNew, null))
                 return d.ShowDialog() == DialogResult.OK ? d._first.Text : null;
         }
     }
 
     // shown once, right after a password is set - the only time the recovery code is ever visible
-    internal sealed class RecoveryCodeDialog : Form
+    internal sealed class RecoveryCodeDialog : Dialog
     {
         private readonly string _code;
         private bool _confirmed;
 
         private RecoveryCodeDialog(string code)
+            : base("UnplugLock", "Save your recovery code", "It's the only way back in if you forget your password.", 420, false)
         {
             _code = code;
-
-            Text = "UnplugLock - recovery code";
-            Icon = TrayApp.AppIcon;
-            FormBorderStyle = FormBorderStyle.FixedDialog;
             ControlBox = false;
             TopMost = true;
-            StartPosition = FormStartPosition.CenterScreen;
-            Font = SystemFonts.MessageBoxFont;
-            AutoScaleMode = AutoScaleMode.Font;
-            AutoSize = true;
-            AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            Padding = new Padding(16);
 
-            var layout = new TableLayoutPanel
-            {
-                ColumnCount = 1,
-                AutoSize = true,
-                AutoSizeMode = AutoSizeMode.GrowAndShrink
-            };
-
-            layout.Controls.Add(new Label
-            {
-                Text = "Save your recovery code",
-                Font = new Font(Font.FontFamily, 12f, FontStyle.Bold),
-                AutoSize = true,
-                Margin = new Padding(0, 0, 0, 8)
-            });
-            layout.Controls.Add(new Label
-            {
-                Text = "If you ever forget your password, click \"Forgot password?\" on the password prompt " +
-                       "and enter this code. It removes the password so you can set a new one.\n\n" +
-                       "Keep it somewhere other than this laptop, like your phone, a password manager or on paper. " +
-                       "It won't be shown again.",
-                AutoSize = true,
-                MaximumSize = new Size(400, 0),
-                Margin = new Padding(0, 0, 0, 12)
-            });
+            AddText("If you forget your password, click \"Forgot password?\" on the password prompt " +
+                    "and enter this code. It removes the password so you can set a new one.", Ui.Ink, Ui.Body, 10);
+            AddText("Keep it somewhere other than this laptop, like your phone, a password manager or on paper. " +
+                    "It won't be shown again.", Ui.Ink, Ui.Body, 18);
 
             var codeBox = new TextBox
             {
                 Text = code,
                 ReadOnly = true,
-                Font = new Font("Consolas", 13f, FontStyle.Bold),
+                Font = new Font("Consolas", 15f, FontStyle.Bold),
                 TextAlign = HorizontalAlignment.Center,
-                Width = 400,
-                BackColor = SystemColors.Window,
-                Margin = new Padding(0, 0, 0, 8)
+                Width = ContentWidth,
+                BackColor = Color.FromArgb(243, 247, 255),
+                ForeColor = Ui.Ink,
+                Margin = Ui.S(0, 0, 0, 12)
             };
-            layout.Controls.Add(codeBox);
+            Body.Controls.Add(codeBox);
 
-            var copy = new Button { Text = "Copy", AutoSize = true, MinimumSize = new Size(88, 0) };
-            var save = new Button { Text = "Save to file...", AutoSize = true, MinimumSize = new Size(88, 0) };
+            var copy = new RoundButton("Copy", false) { Margin = Padding.Empty };
+            var save = new RoundButton("Save to file...", false);
             copy.Click += delegate
             {
                 try
@@ -1015,32 +1383,22 @@ namespace UnplugLock
                 catch { /* clipboard busy */ }
             };
             save.Click += delegate { SaveToFile(); };
-            var tools = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0, 0, 0, 10) };
+            var tools = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = Ui.S(0, 0, 0, 18) };
             tools.Controls.Add(copy);
             tools.Controls.Add(save);
-            layout.Controls.Add(tools);
+            Body.Controls.Add(tools);
 
-            var check = new CheckBox { Text = "I've saved my recovery code", AutoSize = true };
-            layout.Controls.Add(check);
+            var check = new CheckBox { Text = "I've saved my recovery code", AutoSize = true, Margin = Padding.Empty };
+            Body.Controls.Add(check);
 
-            var ok = new Button { Text = "Done", AutoSize = true, MinimumSize = new Size(88, 0), Enabled = false };
+            var ok = AddButton("Done", true);
+            ok.Enabled = false;
             check.CheckedChanged += delegate { ok.Enabled = check.Checked; };
             ok.Click += delegate
             {
                 _confirmed = true;
                 DialogResult = DialogResult.OK;
             };
-            var buttons = new FlowLayoutPanel
-            {
-                FlowDirection = FlowDirection.RightToLeft,
-                AutoSize = true,
-                Anchor = AnchorStyles.Right,
-                Margin = new Padding(0, 14, 0, 0)
-            };
-            buttons.Controls.Add(ok);
-            layout.Controls.Add(buttons);
-
-            Controls.Add(layout);
             AcceptButton = ok;
 
             // no closing it (alt+f4 etc.) until they confirm
@@ -1049,7 +1407,7 @@ namespace UnplugLock
                 if (!_confirmed && e.CloseReason == CloseReason.UserClosing)
                     e.Cancel = true;
             };
-            Shown += delegate { Activate(); codeBox.SelectionLength = 0; ok.Focus(); };
+            Shown += delegate { Activate(); codeBox.SelectionLength = 0; check.Focus(); };
         }
 
         private void SaveToFile()
@@ -1248,6 +1606,7 @@ namespace UnplugLock
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(lockNowItem);
             menu.Items.Add(exitItem);
+            Ui.StyleMenu(menu);
             menu.Opening += delegate
             {
                 // once they've added a password, drop the warning (checking a blank account costs nothing)
