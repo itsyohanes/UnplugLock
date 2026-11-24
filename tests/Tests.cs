@@ -682,6 +682,64 @@ namespace UnplugLock.Tests
         [DllImport("kernel32.dll")]
         private static extern bool CloseHandle(IntPtr handle);
 
+        [DllImport("kernel32.dll")]
+        private static extern IntPtr GetCurrentProcess();
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        private static extern bool OpenProcessToken(IntPtr process, int access, out IntPtr token);
+
+        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern bool LookupPrivilegeValue(string system, string name, out long luid);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        private static extern bool AdjustTokenPrivileges(IntPtr token, bool disableAll, ref TokenPrivilege state,
+            int length, IntPtr previous, IntPtr returnLength);
+
+        [StructLayout(LayoutKind.Sequential, Pack = 4)]
+        private struct TokenPrivilege
+        {
+            public int Count;
+            public long Luid;
+            public int Attributes;
+        }
+
+        private static bool _debugDropped;
+
+        // An elevated admin with SeDebugPrivilege skips process permission checks entirely, which is
+        // the documented limit of the guard (GitHub's Windows runners run like that). Removing the
+        // privilege from this test process puts it back under the deny rules, so the guard tests
+        // still test something real there.
+        private static void DropDebugPrivilege()
+        {
+            if (_debugDropped)
+                return;
+            _debugDropped = true;
+            bool admin;
+            using (var me = System.Security.Principal.WindowsIdentity.GetCurrent())
+                admin = new System.Security.Principal.WindowsPrincipal(me)
+                    .IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+
+            IntPtr token;
+            long luid;
+            if (!OpenProcessToken(GetCurrentProcess(), 0x0020 | 0x0008, out token)) // ADJUST_PRIVILEGES | QUERY
+                return;
+            try
+            {
+                if (!LookupPrivilegeValue(null, "SeDebugPrivilege", out luid))
+                    return;
+                var state = new TokenPrivilege { Count = 1, Luid = luid, Attributes = 0x00000004 }; // SE_PRIVILEGE_REMOVED
+                bool ok = AdjustTokenPrivileges(token, false, ref state, Marshal.SizeOf(typeof(TokenPrivilege)),
+                    IntPtr.Zero, IntPtr.Zero);
+                int error = Marshal.GetLastWin32Error();
+                Console.WriteLine("      (elevated admin: " + admin + ", SeDebugPrivilege " +
+                    (ok && error == 0 ? "removed for these tests" : "not held") + ")");
+            }
+            finally
+            {
+                CloseHandle(token);
+            }
+        }
+
         private static bool CanOpen(int access)
         {
             IntPtr h = OpenProcess(access, false, Process.GetCurrentProcess().Id);
@@ -693,6 +751,7 @@ namespace UnplugLock.Tests
 
         private static void GuardProtect()
         {
+            DropDebugPrivilege();
             const int Terminate = 0x0001, SuspendResume = 0x0800, Synchronize = 0x00100000;
             Check(CanOpen(Terminate), "terminate allowed before");
             Guard.Protect();
@@ -713,6 +772,7 @@ namespace UnplugLock.Tests
         // rewrite the permissions and then end it, or inject a thread
         private static void GuardProtectFull()
         {
+            DropDebugPrivilege();
             const int WriteDac = 0x00040000, WriteOwner = 0x00080000, CreateThread = 0x0002, VmWrite = 0x0020,
                 VmOperation = 0x0008, VmRead = 0x0010, DupHandle = 0x0040, QueryLimited = 0x1000;
             Guard.Protect();
