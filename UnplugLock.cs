@@ -1779,6 +1779,57 @@ namespace UnplugLock
         }
     }
 
+    internal sealed class AboutDialog : Dialog
+    {
+        public const string WebsiteUrl = "https://unpluglock.com";
+        public const string SourceUrl = "https://github.com/itsyohanes/UnplugLock";
+        public const string ReleasesUrl = "https://github.com/itsyohanes/UnplugLock/releases";
+        public const string SupportUrl = "https://donate.stripe.com/14A6oH5tB2aog7J8HAfIs00";
+
+        private AboutDialog()
+            : base("About UnplugLock", "UnplugLock", "Version " + Program.Version, 340, true)
+        {
+            AddText("Locks your laptop the moment the charger is unplugged.", Ui.Ink, Ui.Body, 14);
+            AddLink("www.unpluglock.com", WebsiteUrl);
+            AddLink("Source code on GitHub", SourceUrl);
+            AddLink("Check for new releases", ReleasesUrl);
+            AddLink("Support UnplugLock", SupportUrl).Margin = Padding.Empty;
+
+            SetFooterNote(Ui.Text("Free and open source, MIT License", ContentWidth - Ui.S(110), Ui.Muted, Ui.Small, 0));
+            var close = AddButton("Close", true);
+            close.DialogResult = DialogResult.OK;
+            AcceptButton = close;
+            CancelButton = close;
+        }
+
+        private LinkLabel AddLink(string text, string url)
+        {
+            var link = new LinkLabel
+            {
+                Text = text,
+                AutoSize = true,
+                LinkBehavior = LinkBehavior.HoverUnderline,
+                LinkColor = Ui.Brand,
+                ActiveLinkColor = Ui.BrandPressed,
+                BackColor = Color.Transparent,
+                Margin = Ui.S(0, 0, 0, 8)
+            };
+            link.LinkClicked += delegate
+            {
+                try { Process.Start(url); }
+                catch { /* no browser set up */ }
+            };
+            Body.Controls.Add(link);
+            return link;
+        }
+
+        public static void Present()
+        {
+            using (var d = new AboutDialog())
+                d.ShowDialog();
+        }
+    }
+
     // Locking does nothing useful if the Windows account has no password - the lock screen
     // just has a "Sign in" button. Only local accounts can be blank; domain, Entra and
     // Microsoft accounts always have one.
@@ -2096,6 +2147,7 @@ namespace UnplugLock
             passwordMenu.DropDownItems.Add(_removePasswordItem);
 
             var lockNowItem = new ToolStripMenuItem("Lock now", null, delegate { TestLock(); });
+            var aboutItem = new ToolStripMenuItem("About UnplugLock...", null, delegate { Guarded(AboutDialog.Present); });
             var exitItem = new ToolStripMenuItem("Exit", null, delegate { Guarded(Exit); });
 
             _signInItem = new ToolStripMenuItem("Windows has no password - set one up...",
@@ -2116,6 +2168,7 @@ namespace UnplugLock
             menu.Items.Add(passwordMenu);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(lockNowItem);
+            menu.Items.Add(aboutItem);
             menu.Items.Add(exitItem);
             Ui.StyleMenu(menu);
             menu.Opening += delegate

@@ -82,6 +82,7 @@ Right-click the tray icon:
 | **Hide tray icon** | Hide the icon while UnplugLock keeps running. Open UnplugLock again from the Start menu to bring it back. |
 | **Password** | Set, change or remove the password. Setting or changing it shows a new recovery code. |
 | **Lock now** | Lock immediately, to check locking works |
+| **About UnplugLock...** | Version number, plus links to the website, the source code, new releases and support |
 | **Exit** | Close UnplugLock (and its helper process) |
 
 UnplugLock only reacts to the change from plugged in to battery. Starting it while already on battery won't lock you out, and plugging back in never unlocks anything.
