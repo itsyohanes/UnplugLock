@@ -14,9 +14,10 @@
 
 <p align="center">
   <a href="https://github.com/itsyohanes/UnplugLock/actions/workflows/test.yml"><img src="https://github.com/itsyohanes/UnplugLock/actions/workflows/test.yml/badge.svg?branch=main" alt="Test status"></a>
-  <a href="https://github.com/itsyohanes/UnplugLock/releases/latest"><img src="https://img.shields.io/github/v/release/itsyohanes/UnplugLock?label=release&logo=github" alt="Latest release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/itsyohanes/UnplugLock?logo=opensourceinitiative&logoColor=white" alt="License"></a>
-  <a href="https://dotnet.microsoft.com/download/dotnet-framework"><img src="https://img.shields.io/badge/.NET%20Framework-4.7.2%2B-512BD4?logo=dotnet&logoColor=white" alt=".NET Framework 4.7.2 or later"></a>
+  <a href="https://github.com/itsyohanes/UnplugLock/releases/latest"><img src="https://raw.githubusercontent.com/itsyohanes/UnplugLock/badges/release.svg" alt="Latest release"></a>
+  <a href="https://github.com/itsyohanes/UnplugLock/commits/main"><img src="https://raw.githubusercontent.com/itsyohanes/UnplugLock/badges/last-commit.svg" alt="Last commit"></a>
+  <a href="LICENSE"><img src="https://raw.githubusercontent.com/itsyohanes/UnplugLock/badges/license.svg" alt="License"></a>
+  <a href="https://dotnet.microsoft.com/download/dotnet-framework"><img src="https://raw.githubusercontent.com/itsyohanes/UnplugLock/badges/dotnet-framework.svg" alt=".NET Framework 4.7.2 or later"></a>
 </p>
 
 <p align="center">
