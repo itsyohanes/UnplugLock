@@ -13,6 +13,14 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/itsyohanes/UnplugLock/releases/latest"><img src="https://img.shields.io/github/v/release/itsyohanes/UnplugLock" alt="Latest release"></a>
+  <a href="https://github.com/itsyohanes/UnplugLock/commits/main"><img src="https://img.shields.io/github/last-commit/itsyohanes/UnplugLock" alt="Last commit"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/itsyohanes/UnplugLock" alt="License"></a>
+  <a href="https://dotnet.microsoft.com/download/dotnet-framework"><img src="https://img.shields.io/badge/.NET%20Framework-4.7.2%2B-512BD4" alt=".NET Framework 4.7.2 or later"></a>
+  <a href="https://github.com/itsyohanes/UnplugLock/actions/workflows/test.yml"><img src="https://github.com/itsyohanes/UnplugLock/actions/workflows/test.yml/badge.svg?branch=main" alt="Build and test"></a>
+</p>
+
+<p align="center">
   <img src="docs/banner.jpg" width="800" alt="A laptop showing the Windows lock screen, with its charging cable pulled out">
 </p>
 
@@ -97,7 +105,7 @@ Reading the adapter state doesn't need location access or any other permission, 
 
 ### Forgot your password?
 
-When you set or change a password, UnplugLock shows a recovery code like `XXXXX-XXXXX-XXXXX-XXXXX-XXXXX`. This is the only time it's shown. Copy it or save it somewhere other than the laptop: your phone, a password manager, or on paper.
+When you set or change a password, UnplugLock shows a recovery code like `XXXXX-XXXXX-XXXXX-XXXXX-XXXXX`. This is the only time it's shown. Copy it or save it somewhere other than the laptop: your phone, a password manager, or on paper. Copying keeps it out of Windows clipboard history, and if you save it to the laptop's own drive, UnplugLock reminds you to move it off.
 
 If you forget the password, click **Forgot password?** on the password prompt and enter the code. Case, spaces and dashes don't matter.
 
@@ -144,8 +152,17 @@ This produces:
 | `Setup.cs` | Installer and uninstaller (compiled together with `UnplugLock.cs`) |
 | `setup.manifest` | Runs setup without asking for admin rights |
 | `build.cmd` | Build script |
+| `test.cmd` / `tests/` | Builds and runs the tests |
 | `UnplugLock.ico` / `.png` | App icon, drawn by the app itself (delete the `.ico` and rebuild to regenerate both) |
 | `docs/` | Images used in this README |
+
+To run the tests:
+
+```
+test.cmd
+```
+
+They cover settings storage, repair and tamper resistance, the password and recovery code, quitting, the startup entry, the process guard, lock retries, the network adapter table and the icon. They use their own registry key and folder, so they're safe to run on a machine where UnplugLock is installed. GitHub Actions builds and tests every push and pull request that changes the code.
 
 To release a new version, update `VERSION` in `build.cmd` and `Version` in `Setup.cs`.
 
@@ -153,7 +170,9 @@ To release a new version, update `VERSION` in `build.cmd` and `Version` in `Setu
 
 - **Detection:** listens for Windows power-change notifications, and also checks the power status once a second as a backup.
 - **Locking:** the standard Windows lock call (`LockWorkStation`), the same as pressing `Win + L`.
-- **Process guard:** the helper is a copy of the app, `UnplugLockHelper.exe`, in the install folder. Each process watches the other and restarts it if it ends unexpectedly. Both deny "terminate" and "suspend" access to other processes, which stops anything running without admin rights. If the startup entry is deleted, it's put back within about 5 seconds.
+- **Process guard:** the helper is a copy of the app, `UnplugLockHelper.exe`, in the install folder. Each process watches the other and restarts it unless it was exited properly from the tray menu or setup. Both deny other processes the access they'd need to end, suspend, read, inject into or change the permissions of them, which stops anything running without admin rights. If the startup entry is deleted or changed, it's put back within about 5 seconds.
+- **Quitting:** setup closes the running app over a pipe that only your account can open, and with a password set it has to send the password or recovery code. Nothing else can close UnplugLock without it.
+- **Locking:** if Windows refuses to lock (for example while a UAC prompt is showing), UnplugLock keeps trying every half second for up to 10 minutes.
 - **Settings:** stored in `HKCU\Software\UnplugLock`, with a hidden backup in `%LOCALAPPDATA%\UnplugLock\settings.dat`. If one copy is missing, it's restored from the other the next time UnplugLock starts. If the two disagree, the stricter setting wins. With a password set, the registry key denies changes to everyone, and the running app checks both copies once a second and rewrites them if they've changed.
 - **Passwords:** neither the password nor the recovery code is stored. Only salted PBKDF2-SHA256 hashes (200,000 iterations) are kept.
 
