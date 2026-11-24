@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
+using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using System.Security.Cryptography;
@@ -58,9 +59,13 @@ namespace UnplugLock
                     return 0;
                 }
 
-                Application.Run(new TrayApp());
+                // the helper passes --restarted when it brings us back
+                var app = new TrayApp(Array.IndexOf(args, "--restarted") >= 0);
+                Application.Run(app);
+                // only a real quit tells the helper to stand down. Anything else (a crash, a posted
+                // WM_QUIT, being ended) gets us restarted.
+                return app.QuitRequested ? Guard.CleanExitCode : Guard.UnexpectedExitCode;
             }
-            return 0;
         }
     }
 
@@ -253,6 +258,49 @@ namespace UnplugLock
                         _scale = g.DpiX / 96f;
                 return _scale;
             }
+        }
+
+        // runs slow work (password hashing, a pause after a wrong guess) off the UI thread and keeps
+        // the message loop going meanwhile, so power and network checks don't stall. Open windows
+        // are disabled until it's done, so nothing can be clicked twice.
+        public static T Busy<T>(Func<T> work)
+        {
+            T result = default(T);
+            Exception error = null;
+            var forms = new List<Form>();
+            foreach (Form f in Application.OpenForms)
+                if (f.Enabled)
+                    forms.Add(f);
+            foreach (var f in forms)
+                f.Enabled = false;
+            try
+            {
+                using (var done = new ManualResetEvent(false))
+                {
+                    ThreadPool.QueueUserWorkItem(delegate
+                    {
+                        try { result = work(); }
+                        catch (Exception ex) { error = ex; }
+                        done.Set();
+                    });
+                    while (!done.WaitOne(15))
+                        Application.DoEvents();
+                }
+            }
+            finally
+            {
+                foreach (var f in forms)
+                    if (!f.IsDisposed)
+                        f.Enabled = true;
+            }
+            if (error != null)
+                throw new InvalidOperationException(error.Message, error);
+            return result;
+        }
+
+        public static void Pause(int milliseconds)
+        {
+            Busy(delegate { Thread.Sleep(milliseconds); return true; });
         }
 
         public static int S(float px) { return (int)Math.Round(px * Scale); }
@@ -616,20 +664,38 @@ namespace UnplugLock
 
     internal static class Guard
     {
-        public const string StopSignalName = @"Local\UnplugLock.GuardStop"; // main -> helper: stand down
-        public const string QuitSignalName = @"Local\UnplugLock.Quit";      // setup -> main: exit cleanly
+        // main -> helper: "check whether the guard is still on". Anyone can set it, so the helper
+        // only stands down if the saved settings really say the guard is off.
+        public const string StopSignalName = @"Local\UnplugLock.GuardStop";
+        // what 1.3.0 and earlier listen on to quit. Setup still sets it when updating an old copy.
+        // Newer copies don't listen on it: anyone could set it, so quitting goes through QuitListener.
+        public const string LegacyQuitSignalName = @"Local\UnplugLock.Quit";
         public const string HelperName = "UnplugLockHelper";
 
+        // the main app's exit code tells the helper whether to bring it back
+        public const int CleanExitCode = 0;
+        public const int UnexpectedExitCode = 3;
+
         private const int DACL_SECURITY_INFORMATION = 4;
-        private const int PROCESS_TERMINATE = 0x0001;
-        private const int PROCESS_SUSPEND_RESUME = 0x0800;
         private const int SYNCHRONIZE = 0x00100000;
+        private const int PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+
+        // everything that would let another process end, freeze or take over ours: terminate, create
+        // a thread in it, read/write its memory, copy its handles, start children as it, change its
+        // limits or priority, suspend it, and rewrite its permissions or owner. Waiting on it and
+        // basic queries stay allowed (the helper and setup need those).
+        internal const int DeniedRights =
+            0x0001 | 0x0002 | 0x0008 | 0x0010 | 0x0020 | 0x0040 | 0x0080 | 0x0100 | 0x0200 | 0x0800 |
+            0x00010000 | 0x00040000 | 0x00080000; // DELETE, WRITE_DAC, WRITE_OWNER
 
         [DllImport("kernel32.dll")]
         private static extern IntPtr GetCurrentProcess();
 
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern SafeWaitHandle OpenProcess(int access, bool inherit, int pid);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool GetExitCodeProcess(SafeWaitHandle process, out int exitCode);
 
         [DllImport("advapi32.dll", SetLastError = true)]
         private static extern bool GetKernelObjectSecurity(IntPtr handle, int info, byte[] sd, uint length, out uint needed);
@@ -659,15 +725,18 @@ namespace UnplugLock
 
                 var sd = new RawSecurityDescriptor(buf, 0);
                 var everyone = new SecurityIdentifier(WellKnownSidType.WorldSid, null);
+                // without an OWNER RIGHTS entry, the process owner (us) always gets WRITE_DAC, so any
+                // program running as us could just rewrite these permissions and then end the process
+                var ownerRights = new SecurityIdentifier("S-1-3-4");
                 var dacl = sd.DiscretionaryAcl;
                 if (dacl == null)
                 {
                     // null dacl = full access for everyone, keep that apart from the deny
-                    dacl = new RawAcl(GenericAcl.AclRevision, 2);
+                    dacl = new RawAcl(GenericAcl.AclRevision, 3);
                     dacl.InsertAce(0, new CommonAce(AceFlags.None, AceQualifier.AccessAllowed, 0x1FFFFF, everyone, false, null));
                 }
-                dacl.InsertAce(0, new CommonAce(AceFlags.None, AceQualifier.AccessDenied,
-                    PROCESS_TERMINATE | PROCESS_SUSPEND_RESUME, everyone, false, null));
+                dacl.InsertAce(0, new CommonAce(AceFlags.None, AceQualifier.AccessDenied, DeniedRights, everyone, false, null));
+                dacl.InsertAce(1, new CommonAce(AceFlags.None, AceQualifier.AccessDenied, DeniedRights, ownerRights, false, null));
                 sd.DiscretionaryAcl = dacl;
 
                 var updated = new byte[sd.BinaryLength];
@@ -707,7 +776,13 @@ namespace UnplugLock
             return Process.Start(psi);
         }
 
-        // helper: wait for the main app to die, restart it unless told to stand down
+        // whether the helper brings the main app back after it ends. exitCode is null if we couldn't read it.
+        public static bool ShouldRestart(int? exitCode, bool guardOn)
+        {
+            return guardOn && exitCode != CleanExitCode;
+        }
+
+        // helper: wait for the main app to end, and restart it unless it quit properly or the guard is off
         public static int RunHelper(string[] args)
         {
             int pid;
@@ -717,43 +792,204 @@ namespace UnplugLock
 
             Protect();
 
-            EventWaitHandle stop;
-            try { stop = EventWaitHandle.OpenExisting(StopSignalName); }
+            EventWaitHandle recheck;
+            try { recheck = EventWaitHandle.OpenExisting(StopSignalName); }
             catch { return 0; } // main isn't running a guard
 
-            using (stop)
+            int? exitCode = null;
+            using (recheck)
+            using (var handle = OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, false, pid))
             {
-                using (var handle = OpenProcess(SYNCHRONIZE, false, pid))
+                if (!handle.IsInvalid)
                 {
-                    if (!handle.IsInvalid)
+                    using (var mainExited = new ManualResetEvent(false))
                     {
-                        using (var mainExited = new ManualResetEvent(false))
+                        mainExited.SafeWaitHandle = handle;
+                        try
                         {
-                            mainExited.SafeWaitHandle = handle;
-                            WaitHandle.WaitAny(new WaitHandle[] { stop, mainExited });
+                            while (WaitHandle.WaitAny(new WaitHandle[] { recheck, mainExited }) == 0)
+                            {
+                                // the main app turned the guard off - or someone else set the signal,
+                                // in which case the settings still say on and we keep watching
+                                if (!Settings.Load(false).Guard)
+                                    return 0;
+                                Thread.Sleep(200); // a flood of signals can't make us spin
+                            }
+                        }
+                        finally
+                        {
                             mainExited.SafeWaitHandle = new SafeWaitHandle(IntPtr.Zero, false); // handle is disposed by the using above
                         }
                     }
+                    int code;
+                    if (GetExitCodeProcess(handle, out code))
+                        exitCode = code;
                 }
+            }
 
-                if (stop.WaitOne(0))
-                    return 0;
+            if (!ShouldRestart(exitCode, Settings.Load(false).Guard))
+                return 0;
 
-                Thread.Sleep(300);
-                if (stop.WaitOne(0) || !Settings.Load().Guard)
-                    return 0;
+            Thread.Sleep(300);
+            try
+            {
+                Process.Start(new ProcessStartInfo(appPath, "--restarted")
+                {
+                    UseShellExecute = false,
+                    WorkingDirectory = Path.GetDirectoryName(appPath)
+                });
+            }
+            catch { /* nothing we can do */ }
+            return 0;
+        }
+    }
 
+    // How setup closes the running app. A named event used to do this, but any program could set
+    // it and close UnplugLock without the password. Now it's a pipe that only the current user can
+    // open (and not over the network), and with a password set the request has to carry the
+    // password or the recovery code.
+    internal sealed class QuitListener
+    {
+        private const int MaxSecretBytes = 1024;
+
+        private readonly string _pipeName;
+        private readonly Func<string, bool> _authorize;
+        private readonly Action _onQuit;
+        private volatile bool _stopped;
+
+        public QuitListener(string pipeName, Func<string, bool> authorize, Action onQuit)
+        {
+            _pipeName = pipeName;
+            _authorize = authorize;
+            _onQuit = onQuit;
+        }
+
+        // one per user and Windows session
+        public static string DefaultPipeName
+        {
+            get
+            {
+                using (var me = WindowsIdentity.GetCurrent())
+                    return "UnplugLock.Quit." + me.User.Value + "." + Process.GetCurrentProcess().SessionId;
+            }
+        }
+
+        public void Start()
+        {
+            new Thread(Listen) { IsBackground = true, Name = "UnplugLock quit pipe" }.Start();
+        }
+
+        public void Stop()
+        {
+            _stopped = true;
+        }
+
+        private PipeSecurity Security()
+        {
+            var ps = new PipeSecurity();
+            using (var me = WindowsIdentity.GetCurrent())
+                ps.AddAccessRule(new PipeAccessRule(me.User, PipeAccessRights.ReadWrite, AccessControlType.Allow));
+            ps.AddAccessRule(new PipeAccessRule(new SecurityIdentifier(WellKnownSidType.NetworkSid, null),
+                PipeAccessRights.FullControl, AccessControlType.Deny));
+            return ps;
+        }
+
+        private void Listen()
+        {
+            while (!_stopped)
+            {
+                NamedPipeServerStream server;
                 try
                 {
-                    Process.Start(new ProcessStartInfo(appPath)
-                    {
-                        UseShellExecute = false,
-                        WorkingDirectory = Path.GetDirectoryName(appPath)
-                    });
+                    // one instance only, so nothing else can sit on the same name while we're running
+                    server = new NamedPipeServerStream(_pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
+                        PipeOptions.Asynchronous, 64, 64, Security());
                 }
-                catch { /* nothing we can do */ }
+                catch
+                {
+                    Thread.Sleep(5000); // name taken, try again later
+                    continue;
+                }
+
+                using (server)
+                {
+                    try
+                    {
+                        server.WaitForConnection();
+                        if (_stopped)
+                            return;
+                        var length = new byte[2];
+                        if (!ReadExactly(server, length, 2000))
+                            continue;
+                        int n = (length[0] << 8) | length[1];
+                        if (n > MaxSecretBytes)
+                            continue;
+                        var bytes = new byte[n];
+                        if (n > 0 && !ReadExactly(server, bytes, 2000))
+                            continue;
+
+                        bool ok = _authorize(System.Text.Encoding.UTF8.GetString(bytes));
+                        if (!ok)
+                            Thread.Sleep(1000); // slow down guessing
+                        server.WriteByte(ok ? (byte)1 : (byte)0);
+                        server.Flush();
+                        server.WaitForPipeDrain();
+                        if (ok && !_stopped)
+                            _onQuit();
+                    }
+                    catch { /* client went away, wait for the next one */ }
+                }
             }
-            return 0;
+        }
+
+        private static bool ReadExactly(Stream s, byte[] buf, int timeoutMs)
+        {
+            int got = 0;
+            int deadline = Environment.TickCount + timeoutMs;
+            while (got < buf.Length)
+            {
+                int left = deadline - Environment.TickCount;
+                if (left <= 0)
+                    return false;
+                var ar = s.BeginRead(buf, got, buf.Length - got, null, null);
+                if (!ar.AsyncWaitHandle.WaitOne(left))
+                    return false; // disposing the pipe cancels the read
+                int read = s.EndRead(ar);
+                if (read == 0)
+                    return false;
+                got += read;
+            }
+            return true;
+        }
+
+        // asks the running app to quit. null = nothing listening, true = it's quitting, false = refused.
+        public static bool? RequestQuit(string pipeName, string secret, int connectTimeoutMs)
+        {
+            var bytes = System.Text.Encoding.UTF8.GetBytes(secret ?? "");
+            if (bytes.Length > MaxSecretBytes)
+                return false;
+            try
+            {
+                using (var client = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous))
+                {
+                    client.Connect(connectTimeoutMs);
+                    var msg = new byte[2 + bytes.Length];
+                    msg[0] = (byte)(bytes.Length >> 8);
+                    msg[1] = (byte)bytes.Length;
+                    Buffer.BlockCopy(bytes, 0, msg, 2, bytes.Length);
+                    client.Write(msg, 0, msg.Length);
+                    client.Flush();
+
+                    // checking the password takes a moment, a wrong one a second more
+                    var answer = new byte[1];
+                    if (!ReadExactly(client, answer, 15000))
+                        return false;
+                    return answer[0] == 1;
+                }
+            }
+            catch (TimeoutException) { return null; }
+            catch (IOException) { return null; }
+            catch (UnauthorizedAccessException) { return false; }
         }
     }
 
@@ -762,10 +998,15 @@ namespace UnplugLock
     // anything that gets changed or deleted.
     internal sealed class Settings
     {
-        private const string KeyPath = @"Software\UnplugLock";
+        // the tests point these somewhere else so they never touch the real settings
+        internal static string KeyPath = @"Software\UnplugLock";
+        internal static string RunValueName = "UnplugLock";
+        internal static string BackupDirOverride = null;
         private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
-        private const string RunValueName = "UnplugLock";
         private const int HashIterations = 200000;
+        // the longest choice in the menu. Anything bigger from a stored copy is cut down to this,
+        // so an edited value can't quietly turn locking off (or overflow the timer).
+        public const int MaxDelaySeconds = 10;
         private const string CodeChars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O or 1/I
 
         private const RegistryRights LockedRights =
@@ -798,7 +1039,8 @@ namespace UnplugLock
         {
             get
             {
-                return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "UnplugLock");
+                return BackupDirOverride ??
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "UnplugLock");
             }
         }
 
@@ -811,7 +1053,8 @@ namespace UnplugLock
 
         // ---- load / save
 
-        public static Settings Load()
+        // repair: false only reads (the helper uses this, so it never writes behind the app's back)
+        public static Settings Load(bool repair = true)
         {
             Settings reg = ReadRegistry();
             Settings bak = ReadBackup();
@@ -823,9 +1066,14 @@ namespace UnplugLock
                 s = reg ?? bak ?? new Settings();
 
             // one copy missing or tampered with - repair both from the merged result
-            if ((reg != null || bak != null) && (!s.SameAs(reg) || !s.SameAs(bak)))
+            if (repair && (reg != null || bak != null) && (!s.SameAs(reg) || !s.SameAs(bak)))
                 s.Save();
             return s;
+        }
+
+        private static int ClampDelay(int seconds)
+        {
+            return Math.Max(0, Math.Min(MaxDelaySeconds, seconds));
         }
 
         // if the copies disagree, keep whichever is stricter
@@ -903,7 +1151,7 @@ namespace UnplugLock
                         return null;
                     var s = new Settings();
                     s.Enabled = Convert.ToInt32(key.GetValue("Enabled", 1)) != 0;
-                    s.DelaySeconds = Math.Max(0, Convert.ToInt32(key.GetValue("DelaySeconds", 0)));
+                    s.DelaySeconds = ClampDelay(Convert.ToInt32(key.GetValue("DelaySeconds", 0)));
                     s.HideIcon = Convert.ToInt32(key.GetValue("HideIcon", 0)) != 0;
                     s.Guard = Convert.ToInt32(key.GetValue("Guard", 1)) != 0;
                     s.LockOnEthernet = Convert.ToInt32(key.GetValue("LockOnEthernet", 0)) != 0;
@@ -955,6 +1203,9 @@ namespace UnplugLock
             {
                 if (!File.Exists(BackupPath))
                     return null;
+                // a line that doesn't make sense is skipped, not the whole file. Otherwise one bad
+                // line would make the backup count as missing, and an edited registry copy would win
+                // outright instead of being merged with the stricter backup.
                 var s = new Settings();
                 foreach (var line in File.ReadAllLines(BackupPath))
                 {
@@ -963,10 +1214,14 @@ namespace UnplugLock
                         continue;
                     string name = line.Substring(0, eq);
                     string value = line.Substring(eq + 1);
+                    int seconds;
                     switch (name)
                     {
                         case "Enabled": s.Enabled = value == "1"; break;
-                        case "DelaySeconds": s.DelaySeconds = Math.Max(0, int.Parse(value)); break;
+                        case "DelaySeconds":
+                            if (int.TryParse(value, out seconds))
+                                s.DelaySeconds = ClampDelay(seconds);
+                            break;
                         case "HideIcon": s.HideIcon = value == "1"; break;
                         case "Guard": s.Guard = value == "1"; break;
                         case "LockOnEthernet": s.LockOnEthernet = value == "1"; break;
@@ -1099,6 +1354,21 @@ namespace UnplugLock
             return HasRecoveryCode && Matches(NormalizeCode(code), _recoveryHash, _recoverySalt);
         }
 
+        // the password or the recovery code (or anything, with no password set)
+        public bool Unlocks(string secret)
+        {
+            return CheckPassword(secret) || CheckRecoveryCode(secret);
+        }
+
+        // takes the password and recovery code hashes from o (worked out off the UI thread)
+        public void CopyPasswordFrom(Settings o)
+        {
+            _passwordHash = o._passwordHash;
+            _passwordSalt = o._passwordSalt;
+            _recoveryHash = o._recoveryHash;
+            _recoverySalt = o._recoverySalt;
+        }
+
         // 25 chars from a 32-char alphabet = 125 bits, shown as XXXXX-XXXXX-XXXXX-XXXXX-XXXXX
         public static string NewRecoveryCode()
         {
@@ -1165,10 +1435,15 @@ namespace UnplugLock
             {
                 try
                 {
+                    // it has to point at us: an entry changed to something else ("x", another
+                    // program) counts as off, so the guard puts it back
                     using (var key = Registry.CurrentUser.OpenSubKey(RunKeyPath))
                     {
                         var v = key == null ? null : key.GetValue(RunValueName) as string;
-                        return !string.IsNullOrEmpty(v);
+                        if (string.IsNullOrEmpty(v))
+                            return false;
+                        return string.Equals(Path.GetFullPath(v.Trim().Trim('"')),
+                            Path.GetFullPath(Application.ExecutablePath), StringComparison.OrdinalIgnoreCase);
                     }
                 }
                 catch { return false; }
@@ -1192,10 +1467,11 @@ namespace UnplugLock
     {
         private enum Mode { Enter, ChooseNew, RecoveryCode }
 
-        private const int MinLength = 4;
+        internal const int MinLength = 6;
 
         private readonly Mode _mode;
         private readonly Settings _settings; // for "Forgot password?"
+        private string _recoveryCode;        // the code that worked, if "Forgot password?" was used
         private readonly TextBox _first;
         private readonly TextBox _second; // only when setting a new password
         private readonly Label _error;
@@ -1237,7 +1513,9 @@ namespace UnplugLock
 
             if (mode == Mode.ChooseNew)
             {
-                AddText("At least " + MinLength + " characters.", Ui.Muted, Ui.Small, 0).Margin = Ui.S(0, 6, 0, 16);
+                // the hashes can be read by anything running as you, so a reused password could be guessed offline
+                AddText("At least " + MinLength + " characters. Don't reuse your Windows password or PIN.",
+                    Ui.Muted, Ui.Small, 0).Margin = Ui.S(0, 6, 0, 16);
                 AddText("Confirm password", Ui.Ink, Ui.Strong, 6);
                 _second = new TextBox { UseSystemPasswordChar = true, Width = ContentWidth, Margin = Padding.Empty };
                 Body.Controls.Add(_second);
@@ -1317,19 +1595,21 @@ namespace UnplugLock
                     code = d._first.Text;
                 }
 
-                if (_settings.CheckRecoveryCode(code))
+                if (Ui.Busy(delegate { return _settings.CheckRecoveryCode(code); }))
                 {
+                    _recoveryCode = code;
                     DialogResult = DialogResult.Retry; // = recovered
                     return;
                 }
 
-                Thread.Sleep(1000); // slow down guessing
+                Ui.Pause(1000); // slow down guessing
                 MessageBox.Show(this, "That recovery code isn't right.", "UnplugLock",
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
 
-        // asks for the current password; "Forgot password?" returns Recovered once a valid code is entered
+        // asks for the current password; "Forgot password?" returns Recovered once a valid code is
+        // entered, with the code in password
         public static AskResult Ask(string prompt, Settings settings, out string password)
         {
             using (var d = new PasswordDialog(prompt, Mode.Enter, settings))
@@ -1337,7 +1617,10 @@ namespace UnplugLock
                 var r = d.ShowDialog();
                 password = null;
                 if (r == DialogResult.Retry)
+                {
+                    password = d._recoveryCode;
                     return AskResult.Recovered;
+                }
                 if (r != DialogResult.OK)
                     return AskResult.Cancelled;
                 password = d._first.Text;
@@ -1391,7 +1674,7 @@ namespace UnplugLock
             {
                 try
                 {
-                    Clipboard.SetText(_code);
+                    Clipboard.SetDataObject(ClipboardData(_code), true);
                     copy.Text = "Copied";
                 }
                 catch { /* clipboard busy */ }
@@ -1424,13 +1707,41 @@ namespace UnplugLock
             Shown += delegate { Activate(); codeBox.SelectionLength = 0; check.Focus(); };
         }
 
+        // the code as clipboard text, marked so Windows keeps it out of clipboard history (Win+V)
+        // and doesn't sync it to other devices, where someone holding the laptop could find it later
+        internal static DataObject ClipboardData(string code)
+        {
+            var data = new DataObject();
+            data.SetData(DataFormats.UnicodeText, code);
+            data.SetData(DataFormats.Text, code);
+            data.SetData("ExcludeClipboardContentFromMonitorProcessing", new MemoryStream(new byte[4]));
+            data.SetData("CanIncludeInClipboardHistory", new MemoryStream(BitConverter.GetBytes(0)));
+            data.SetData("CanUploadToCloudClipboard", new MemoryStream(BitConverter.GetBytes(0)));
+            return data;
+        }
+
+        // a drive that's part of the laptop (not a USB stick or network share)
+        internal static bool IsOnThisLaptop(string path)
+        {
+            try
+            {
+                string root = Path.GetPathRoot(Path.GetFullPath(path));
+                return !root.StartsWith(@"\\") && new DriveInfo(root).DriveType == DriveType.Fixed;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         private void SaveToFile()
         {
             using (var dlg = new SaveFileDialog
             {
                 FileName = "UnplugLock recovery code.txt",
                 Filter = "Text file (*.txt)|*.txt",
-                InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
+                // start at "This PC", so a USB stick is as easy to pick as Documents
+                InitialDirectory = "::{20D04FE0-3AEA-1069-A2D8-08002B30309D}"
             })
             {
                 if (dlg.ShowDialog(this) != DialogResult.OK)
@@ -1446,7 +1757,15 @@ namespace UnplugLock
                 {
                     MessageBox.Show(this, "Couldn't save the file:\n" + ex.Message, "UnplugLock",
                         MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
                 }
+
+                if (IsOnThisLaptop(dlg.FileName))
+                    MessageBox.Show(this,
+                        "Saved. This file is on the laptop's own drive, so anyone who takes the laptop could find it " +
+                        "and use the code to remove your password.\n\n" +
+                        "Copy it to a USB stick, your phone or a password manager, then delete it from this laptop.",
+                        "UnplugLock", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
 
@@ -1474,14 +1793,38 @@ namespace UnplugLock
         // blank passwords are only allowed at the console, so a non-console logon with one fails like this
         private const int ErrorAccountRestriction = 1327;
 
+        [DllImport("netapi32.dll", CharSet = CharSet.Unicode)]
+        private static extern int NetUserGetInfo(string server, string user, int level, out IntPtr buffer);
+
+        [DllImport("netapi32.dll")]
+        private static extern int NetApiBufferFree(IntPtr buffer);
+
         public const string SettingsPage = "ms-settings:signinoptions";
 
+        // A Microsoft account looks like a local one (its domain is the PC name), but always has a
+        // password. USER_INFO_24 starts with a BOOL that says whether it's linked to one.
+        public static bool IsMicrosoftAccount()
+        {
+            IntPtr buffer;
+            if (NetUserGetInfo(null, Environment.UserName, 24, out buffer) != 0)
+                return false;
+            try { return Marshal.ReadInt32(buffer) != 0; }
+            finally { NetApiBufferFree(buffer); }
+        }
+
         // Tries an empty password for the current user. On an account that has a password this
-        // is one failed logon, so only call it at startup or while we already think it's blank.
+        // is one failed logon (which counts towards Windows' lockout limit), so only call it once
+        // at startup - not after the guard restarts us - or while we already think it's blank.
         public static bool HasNoPassword()
         {
             if (!string.Equals(Environment.UserDomainName, Environment.MachineName, StringComparison.OrdinalIgnoreCase))
                 return false; // not a local account
+            try
+            {
+                if (IsMicrosoftAccount())
+                    return false;
+            }
+            catch { /* can't tell, fall through to the logon check */ }
 
             IntPtr token;
             if (LogonUser(Environment.UserName, ".", "", LogonNetwork, ProviderDefault, out token))
@@ -1496,6 +1839,56 @@ namespace UnplugLock
         {
             try { Process.Start(SettingsPage); }
             catch { /* very old builds without the settings page - nothing more we can do */ }
+        }
+    }
+
+    // LockWorkStation fails while another desktop is showing, like a UAC prompt. Without a retry,
+    // someone could open a UAC prompt, pull the plug, then cancel the prompt and walk off with
+    // the laptop unlocked. So keep trying until it works.
+    internal sealed class Locker : IDisposable
+    {
+        private readonly Func<bool> _lock;
+        private readonly TimeSpan _giveUpAfter;
+        private readonly System.Windows.Forms.Timer _retry;
+        private DateTime _giveUpAt;
+
+        public Locker(Func<bool> lockFn, int retryMs, TimeSpan giveUpAfter)
+        {
+            _lock = lockFn;
+            _giveUpAfter = giveUpAfter;
+            _retry = new System.Windows.Forms.Timer { Interval = retryMs };
+            _retry.Tick += delegate { Attempt(); };
+        }
+
+        public bool Retrying { get { return _retry.Enabled; } }
+
+        // true if it locked straight away; otherwise it keeps retrying in the background
+        public bool Lock()
+        {
+            _giveUpAt = DateTime.UtcNow + _giveUpAfter;
+            return Attempt();
+        }
+
+        public void Cancel()
+        {
+            _retry.Stop();
+        }
+
+        private bool Attempt()
+        {
+            bool ok = false;
+            try { ok = _lock(); }
+            catch { /* treat as failed */ }
+            if (ok || DateTime.UtcNow >= _giveUpAt)
+                _retry.Stop();
+            else if (!_retry.Enabled)
+                _retry.Start();
+            return ok;
+        }
+
+        public void Dispose()
+        {
+            _retry.Dispose();
         }
     }
 
@@ -1627,9 +2020,9 @@ namespace UnplugLock
         // short pause before restarting a killed helper
         private readonly System.Windows.Forms.Timer _helperRestart;
 
-        private readonly EventWaitHandle _guardStop;
-        private readonly EventWaitHandle _quitSignal;
-        private readonly RegisteredWaitHandle _quitWait;
+        private readonly EventWaitHandle _guardStop; // tells the helper to re-check the guard setting
+        private readonly QuitListener _quitListener;
+        private readonly Locker _locker;
         private Process _helper;
         private bool _exiting;
         private int _ticks;
@@ -1652,7 +2045,10 @@ namespace UnplugLock
         private readonly Icon _iconOff;
         private bool _busy; // true while a dialog is open
 
-        public TrayApp()
+        // set only by Quit(): the helper reads it from our exit code and doesn't restart us
+        public bool QuitRequested { get; private set; }
+
+        public TrayApp(bool restarted)
         {
             _settings = Settings.Load();
             _lastStatus = CurrentPowerStatus();
@@ -1696,7 +2092,7 @@ namespace UnplugLock
             passwordMenu.DropDownItems.Add(_setPasswordItem);
             passwordMenu.DropDownItems.Add(_removePasswordItem);
 
-            var lockNowItem = new ToolStripMenuItem("Lock now (test)", null, delegate { LockNow(); });
+            var lockNowItem = new ToolStripMenuItem("Lock now (test)", null, delegate { TestLock(); });
             var exitItem = new ToolStripMenuItem("Exit", null, delegate { Guarded(Exit); });
 
             _signInItem = new ToolStripMenuItem("Windows has no password - set one up...",
@@ -1758,19 +2154,27 @@ namespace UnplugLock
                 delegate { _invoker.BeginInvoke((MethodInvoker)ShowTrayIcon); },
                 null, Timeout.Infinite, false);
 
-            // setup uses this to close us cleanly (it already checked the password)
-            _quitSignal = new EventWaitHandle(false, EventResetMode.AutoReset, Guard.QuitSignalName);
-            _quitWait = ThreadPool.RegisterWaitForSingleObject(_quitSignal,
-                delegate { _invoker.BeginInvoke((MethodInvoker)Quit); },
-                null, Timeout.Infinite, false);
+            _locker = new Locker(LockWorkStation, 500, TimeSpan.FromMinutes(10));
 
-            _guardStop = new EventWaitHandle(false, EventResetMode.ManualReset, Guard.StopSignalName);
+            // setup closes us through this, and has to send the password (or recovery code)
+            _quitListener = new QuitListener(QuitListener.DefaultPipeName, _settings.Unlocks, delegate
+            {
+                try { _invoker.BeginInvoke((MethodInvoker)Quit); }
+                catch (InvalidOperationException) { /* already shutting down */ }
+            });
+            _quitListener.Start();
+
+            _guardStop = new EventWaitHandle(false, EventResetMode.AutoReset, Guard.StopSignalName);
             if (_settings.Guard)
                 StartGuard();
 
             RefreshMenu();
             _tray.Visible = !_settings.HideIcon;
 
+            // each check is a failed logon on an account with a password, so skip it after a
+            // guard restart: a restart loop would otherwise lock the Windows account
+            if (restarted)
+                return;
             ThreadPool.QueueUserWorkItem(delegate
             {
                 if (!WindowsSignIn.HasNoPassword())
@@ -1832,6 +2236,7 @@ namespace UnplugLock
             SpawnHelper();
         }
 
+        // call after saving Guard = false: the helper checks the saved setting before it stands down
         private void StopGuard()
         {
             _guardStop.Set();
@@ -1875,9 +2280,9 @@ namespace UnplugLock
 
         private void OnSessionEnded(object sender, SessionEndedEventArgs e)
         {
-            // logging off / shutting down - don't let the helper fight it
+            // logging off / shutting down - don't start a new helper. (The helper isn't told to stand
+            // down: anything can send this message, and Windows ends the helper at sign-out anyway.)
             _exiting = true;
-            _guardStop.Set();
         }
 
 
@@ -1995,7 +2400,7 @@ namespace UnplugLock
         {
             if (_delayTimer.Enabled)
                 return;
-            _delayTimer.Interval = seconds * 1000;
+            _delayTimer.Interval = Math.Max(1, Math.Min(Settings.MaxDelaySeconds, seconds)) * 1000;
             _delayTimer.Start();
         }
 
@@ -2020,17 +2425,30 @@ namespace UnplugLock
             }
             ClearPending();
             if (lockIt)
-                LockWorkStation();
+                _locker.Lock();
         }
 
         private void LockNow()
         {
             ClearPending();
-            LockWorkStation();
+            _locker.Lock();
+        }
+
+        // "Lock now (test)": one try, and say so if it didn't work rather than retrying later
+        private void TestLock()
+        {
+            ClearPending();
+            if (LockWorkStation())
+                return;
+            int error = Marshal.GetLastWin32Error();
+            MessageBox.Show("Windows didn't lock (error " + error + "). When the charger is pulled, UnplugLock " +
+                "keeps trying for 10 minutes, so it locks as soon as Windows allows it.", "UnplugLock",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 
         private void ClearPending()
         {
+            _locker.Cancel();
             _delayTimer.Stop();
             _powerPending = false;
             _netPending.Clear();
@@ -2071,10 +2489,11 @@ namespace UnplugLock
                         MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return true;
                 }
-                if (_settings.CheckPassword(pw))
+                // hashing takes about a second, so do it off the UI thread: unplugging still locks meanwhile
+                if (Ui.Busy(delegate { return _settings.CheckPassword(pw); }))
                     return true;
 
-                Thread.Sleep(1000); // slow down guessing
+                Ui.Pause(1000); // slow down guessing
                 MessageBox.Show("Wrong password.", "UnplugLock", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
@@ -2197,7 +2616,12 @@ namespace UnplugLock
             if (pw == null)
                 return;
             string code = Settings.NewRecoveryCode();
-            _settings.SetPassword(pw, code);
+            _settings.CopyPasswordFrom(Ui.Busy(delegate
+            {
+                var hashed = new Settings();
+                hashed.SetPassword(pw, code);
+                return hashed;
+            }));
             RecoveryCodeDialog.Present(code);
             _settings.Save();
         }
@@ -2217,13 +2641,13 @@ namespace UnplugLock
                 Quit();
         }
 
-        // clean exit: tell the helper to stand down so it doesn't restart us
+        // clean exit: our exit code tells the helper not to restart us
         private void Quit()
         {
-            if (_exiting)
+            if (QuitRequested)
                 return;
+            QuitRequested = true;
             _exiting = true;
-            _guardStop.Set();
             ExitThread();
         }
 
@@ -2278,13 +2702,12 @@ namespace UnplugLock
         protected override void ExitThreadCore()
         {
             _exiting = true;
-            _guardStop.Set();
             _helperRestart.Stop();
             DropHelper();
             _showWait.Unregister(null);
             _showSignal.Dispose();
-            _quitWait.Unregister(null);
-            _quitSignal.Dispose();
+            _quitListener.Stop();
+            _locker.Dispose();
             _guardStop.Dispose();
             SystemEvents.PowerModeChanged -= OnPowerModeChanged;
             SystemEvents.SessionEnded -= OnSessionEnded;
