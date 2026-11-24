@@ -164,7 +164,7 @@ test.cmd
 
 They cover settings storage, repair and tamper resistance, the password and recovery code, quitting, the startup entry, the process guard, lock retries, the network adapter table and the icon. They use their own registry key and folder, so they're safe to run on a machine where UnplugLock is installed. GitHub Actions builds and tests every push and pull request that changes the code.
 
-To release a new version, update `VERSION` in `build.cmd` and `Version` in `Setup.cs`.
+To release a new version, update `VERSION` in `build.cmd` and `Version` in `UnplugLock.cs`.
 
 ### How it works
 

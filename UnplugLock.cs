@@ -21,6 +21,9 @@ namespace UnplugLock
 {
     internal static class Program
     {
+        // shown in the About window and used by the installer. Must match VERSION in build.cmd.
+        public const string Version = "1.3.1";
+
         [STAThread]
         private static int Main(string[] args)
         {
