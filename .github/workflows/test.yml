@@ -1,15 +1,8 @@
-# Builds the app and installer and runs the tests on every push and pull request that touches the code.
+# Builds the app and installer and runs the tests on every pull request that touches the code.
+# Not on pushes to main: merged code was already tested in its pull request.
 name: Build and test
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "*.cs"
-      - "*.cmd"
-      - "setup.manifest"
-      - "tests/**"
-      - ".github/workflows/test.yml"
   pull_request:
     paths:
       - "*.cs"
