@@ -2092,7 +2092,7 @@ namespace UnplugLock
             passwordMenu.DropDownItems.Add(_setPasswordItem);
             passwordMenu.DropDownItems.Add(_removePasswordItem);
 
-            var lockNowItem = new ToolStripMenuItem("Lock now (test)", null, delegate { TestLock(); });
+            var lockNowItem = new ToolStripMenuItem("Lock now", null, delegate { TestLock(); });
             var exitItem = new ToolStripMenuItem("Exit", null, delegate { Guarded(Exit); });
 
             _signInItem = new ToolStripMenuItem("Windows has no password - set one up...",
@@ -2434,7 +2434,7 @@ namespace UnplugLock
             _locker.Lock();
         }
 
-        // "Lock now (test)": one try, and say so if it didn't work rather than retrying later
+        // "Lock now": one try, and say so if it didn't work rather than retrying later
         private void TestLock()
         {
             ClearPending();
