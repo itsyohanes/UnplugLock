@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/itsyohanes/UnplugLock/actions/workflows/test.yml"><img src="https://github.com/itsyohanes/UnplugLock/actions/workflows/test.yml/badge.svg?branch=main" alt="Test status"></a>
+  <a href="https://github.com/itsyohanes/UnplugLock/actions/workflows/test.yml?query=event%3Apull_request"><img src="https://github.com/itsyohanes/UnplugLock/actions/workflows/test.yml/badge.svg?event=pull_request" alt="Test status"></a>
   <a href="https://github.com/itsyohanes/UnplugLock/releases/latest"><img src="https://raw.githubusercontent.com/itsyohanes/UnplugLock/badges/release.svg" alt="Latest release"></a>
   <a href="https://github.com/itsyohanes/UnplugLock/commits/main"><img src="https://raw.githubusercontent.com/itsyohanes/UnplugLock/badges/last-commit.svg" alt="Last commit"></a>
   <a href="LICENSE"><img src="https://raw.githubusercontent.com/itsyohanes/UnplugLock/badges/license.svg" alt="License"></a>
@@ -163,7 +163,7 @@ To run the tests:
 test.cmd
 ```
 
-They cover settings storage, repair and tamper resistance, the password and recovery code, quitting, the startup entry, the process guard, lock retries, the network adapter table and the icon. They use their own registry key and folder, so they're safe to run on a machine where UnplugLock is installed. GitHub Actions builds and tests every push and pull request that changes the code.
+They cover settings storage, repair and tamper resistance, the password and recovery code, quitting, the startup entry, the process guard, lock retries, the network adapter table and the icon. They use their own registry key and folder, so they're safe to run on a machine where UnplugLock is installed. GitHub Actions builds and tests every pull request that changes the code.
 
 To release a new version, update `VERSION` in `build.cmd` and `Version` in `UnplugLock.cs`.
 
