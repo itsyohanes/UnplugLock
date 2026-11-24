@@ -1,0 +1,35 @@
+# Builds the app and installer and runs the tests on every push and pull request that touches the code.
+name: Build and test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "*.cs"
+      - "*.cmd"
+      - "setup.manifest"
+      - "tests/**"
+      - ".github/workflows/test.yml"
+  pull_request:
+    paths:
+      - "*.cs"
+      - "*.cmd"
+      - "setup.manifest"
+      - "tests/**"
+      - ".github/workflows/test.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        shell: cmd
+        run: build.cmd
+      - name: Test
+        shell: cmd
+        run: test.cmd
