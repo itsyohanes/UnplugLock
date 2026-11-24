@@ -45,13 +45,13 @@ The laptop itself can be replaced. What's harder to replace is everything you're
 - **Sign-in check.** If your Windows account has no password, UnplugLock warns you when it starts and keeps a reminder at the top of the tray menu, since locking can't keep anyone out without one. Clicking either opens Sign-in options. (It only checks local accounts. Work, school and Microsoft accounts always have a password.)
 - **Hidden mode.** Hide the tray icon. UnplugLock keeps running, and opening it again brings the icon back.
 - **Starts with Windows**, if you want it to. It always does while the process guard is on.
-- **Small, with no dependencies.** The app is 80 KB and the installer 170 KB. It uses .NET Framework 4.7.2 or later, which is built into Windows 10 (April 2018 Update and later) and Windows 11.
+- **Small, with no dependencies.** The app is 90 KB and the installer 190 KB. It uses .NET Framework 4.7.2 or later, which is built into Windows 10 (April 2018 Update and later) and Windows 11.
 - **No admin rights needed.** Installs and runs as your normal user.
 - **No telemetry.** No analytics, tracking or update checks. UnplugLock never connects to the internet, so nothing about you or your laptop is sent anywhere, and its settings stay on your laptop.
 
 ## Install
 
-1. Download `UnplugLock-Setup-v1.3.0.exe` from the [Releases](https://github.com/itsyohanes/UnplugLock/releases) page.
+1. Download `UnplugLock-Setup-v1.3.1.exe` from the [Releases](https://github.com/itsyohanes/UnplugLock/releases) page.
 2. Run it and click **Install**.
 3. Look for the blue plug icon in the system tray. You may need to click the **^** arrow next to the clock.
 
@@ -117,7 +117,7 @@ Keep the code safe. Because the settings are tamper-resistant, there's no easy w
 ### Silent install (for scripts)
 
 ```
-UnplugLock-Setup-v1.3.0.exe /silent [/nostartup] [/nolaunch] [/desktop] [/noguard]
+UnplugLock-Setup-v1.3.1.exe /silent [/nostartup] [/nolaunch] [/desktop] [/noguard]
 "%LOCALAPPDATA%\Programs\UnplugLock\Uninstall.exe" /uninstall /silent
 ```
 
