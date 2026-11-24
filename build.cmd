@@ -8,7 +8,7 @@ set ROOT=%~dp0
 rem must match Version in Setup.cs
 set VERSION=1.3.0
 set SETUP=UnplugLock-Setup-v%VERSION%.exe
-set ARGS=/nologo /target:winexe /optimize+ /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll
+set ARGS=/nologo /target:winexe /optimize+ /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Core.dll
 
 set SRC="%ROOT%UnplugLock.cs"
 

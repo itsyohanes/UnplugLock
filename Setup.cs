@@ -77,7 +77,7 @@ namespace UnplugLock
                 try
                 {
                     Install(!HasArg(args, "/nostartup"), HasArg(args, "/desktop"), !HasArg(args, "/nolaunch"),
-                        !HasArg(args, "/noguard"));
+                        !HasArg(args, "/noguard"), null);
                     return 0;
                 }
                 catch
@@ -98,8 +98,11 @@ namespace UnplugLock
             return false;
         }
 
-        public static bool AuthorizeExisting(string toDoWhat)
+        // secret is the password or recovery code that was accepted (null with no password set).
+        // The running app needs it to agree to close.
+        public static bool AuthorizeExisting(string toDoWhat, out string secret)
         {
+            secret = null;
             var settings = Settings.Load();
             if (!settings.HasPassword)
                 return true;
@@ -111,20 +114,25 @@ namespace UnplugLock
                     settings, out pw);
                 if (result == AskResult.Cancelled)
                     return false;
-                if (result == AskResult.Recovered || settings.CheckPassword(pw))
+                if (result == AskResult.Recovered || Ui.Busy(delegate { return settings.CheckPassword(pw); }))
+                {
+                    secret = pw;
                     return true;
-                System.Threading.Thread.Sleep(1000);
+                }
+                Ui.Pause(1000);
                 MessageBox.Show("Wrong password.", "UnplugLock", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
 
 
-        public static void Install(bool startWithWindows, bool desktopShortcut, bool launch, bool guard)
+        public static void Install(bool startWithWindows, bool desktopShortcut, bool launch, bool guard, string secret)
         {
             if (guard)
                 startWithWindows = true; // the guard needs it
 
-            StopRunningCopies();
+            if (!StopRunningCopies(secret))
+                throw new InvalidOperationException("UnplugLock is still running and wouldn't close. " +
+                    "Exit it from its tray menu, then run setup again.");
 
             Directory.CreateDirectory(InstallDir);
             TryDelete(Path.Combine(InstallDir, Guard.HelperName + ".exe")); // old version, app recreates it
@@ -182,6 +190,7 @@ namespace UnplugLock
 
         private static bool Uninstall(bool silent)
         {
+            string secret = null;
             if (silent)
             {
                 if (Settings.Load().HasPassword)
@@ -189,7 +198,7 @@ namespace UnplugLock
             }
             else
             {
-                if (!AuthorizeExisting("uninstall it"))
+                if (!AuthorizeExisting("uninstall it", out secret))
                     return false;
                 var answer = MessageBox.Show("Remove UnplugLock and all of its settings from this PC?",
                     "Uninstall UnplugLock", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
@@ -197,7 +206,14 @@ namespace UnplugLock
                     return false;
             }
 
-            StopRunningCopies();
+            // a copy still running would put its settings straight back
+            if (!StopRunningCopies(secret))
+            {
+                if (!silent)
+                    MessageBox.Show("UnplugLock is still running and wouldn't close. Exit it from its tray menu, " +
+                        "then uninstall again.", "UnplugLock", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return false;
+            }
 
             using (var key = Registry.CurrentUser.OpenSubKey(RunKey, true))
                 if (key != null)
@@ -229,15 +245,19 @@ namespace UnplugLock
         }
 
 
-        private static void StopRunningCopies()
+        // true once nothing is left running
+        private static bool StopRunningCopies(string secret)
         {
-            // ask nicely first - a guarded copy can't be killed, and its helper would restart it anyway
+            // ask nicely first - a guarded copy can't be killed, and its helper would restart it anyway.
+            // This version only closes when given the password (or recovery code), if one is set.
+            QuitListener.RequestQuit(QuitListener.DefaultPipeName, secret, 1000);
+            // 1.3.0 and earlier listen on a named event instead
             try
             {
-                using (var quit = System.Threading.EventWaitHandle.OpenExisting(Guard.QuitSignalName))
+                using (var quit = System.Threading.EventWaitHandle.OpenExisting(Guard.LegacyQuitSignalName))
                     quit.Set();
             }
-            catch { /* not running */ }
+            catch { /* not running, or a newer version */ }
 
             for (int i = 0; i < 50 && AnyRunning(); i++)
                 System.Threading.Thread.Sleep(100);
@@ -257,16 +277,24 @@ namespace UnplugLock
                     }
                 }
             }
+            return !AnyRunning();
         }
 
+        // copies in this Windows session (another user's copy on the same PC isn't ours to close)
         private static bool AnyRunning()
         {
+            int session = Process.GetCurrentProcess().SessionId;
             foreach (string name in new[] { "UnplugLock", Guard.HelperName })
             {
                 var procs = Process.GetProcessesByName(name);
+                bool found = false;
                 foreach (var p in procs)
+                {
+                    try { found |= p.SessionId == session; }
+                    catch { /* gone */ }
                     p.Dispose();
-                if (procs.Length > 0)
+                }
+                if (found)
                     return true;
             }
             return false;
@@ -391,11 +419,11 @@ namespace UnplugLock
 
         private void OnInstall(object sender, EventArgs e)
         {
-            if (SetupProgram.IsInstalled || Process.GetProcessesByName("UnplugLock").Length > 0)
-            {
-                if (!SetupProgram.AuthorizeExisting("update it"))
-                    return;
-            }
+            // asks whenever a password is set, however the existing install looks
+            // (the uninstall entry, for example, can be deleted without a password)
+            string secret;
+            if (!SetupProgram.AuthorizeExisting("update it", out secret))
+                return;
 
             _install.Enabled = false;
             _cancel.Enabled = false;
@@ -404,7 +432,7 @@ namespace UnplugLock
             Update();
             try
             {
-                SetupProgram.Install(_startup.Checked, _desktop.Checked, _launch.Checked, _guard.Checked);
+                SetupProgram.Install(_startup.Checked, _desktop.Checked, _launch.Checked, _guard.Checked, secret);
                 Cursor = Cursors.Default;
                 ShowDone(_launch.Checked);
             }
