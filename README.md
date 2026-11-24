@@ -81,7 +81,7 @@ Right-click the tray icon:
 | **Guard process (auto-restart)** | Keep UnplugLock running even if it's closed, for example from Task Manager |
 | **Hide tray icon** | Hide the icon while UnplugLock keeps running. Open UnplugLock again from the Start menu to bring it back. |
 | **Password** | Set, change or remove the password. Setting or changing it shows a new recovery code. |
-| **Lock now (test)** | Lock immediately, to check locking works |
+| **Lock now** | Lock immediately, to check locking works |
 | **Exit** | Close UnplugLock (and its helper process) |
 
 UnplugLock only reacts to the change from plugged in to battery. Starting it while already on battery won't lock you out, and plugging back in never unlocks anything.
