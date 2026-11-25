@@ -113,6 +113,14 @@ namespace UnplugLock.Tests
                 // network + icon
                 Case("Network: adapter table reads without error", NetworkTableReads),
                 Case("Icon: renders at every size and writes a valid .ico", IconWrites),
+
+                // installer packaging
+                Case("Setup: the app packed onto setup comes back out byte for byte", PackRoundTrip),
+                Case("Setup: Uninstall.exe is written without the packed app", UninstallerLeavesAppOut),
+                Case("Setup: a file with no packed app reads as having none", NoPackedApp),
+                Case("Setup: the installer borrows every language from its packed app", SetupBorrowsPackedLanguages),
+                Case("Setup: the uninstaller borrows every language from the installed app", UninstallerBorrowsInstalledLanguages),
+                Case("Setup: with no app to borrow from, setup is in English", SetupEnglishWithoutApp),
             };
 
             try
@@ -1186,6 +1194,118 @@ namespace UnplugLock.Tests
             Equal(7, BitConverter.ToInt16(bytes, 4), "frame count");
             using (var icon = new Icon(ico, 32, 32))
                 Equal(32, icon.Width, "Windows can read the 32px frame");
+        }
+
+        // ---- installer packaging
+
+        // a folder of its own under the test folder, emptied first
+        private static string PackDir(string name)
+        {
+            string dir = Path.Combine(Settings.BackupDir, name);
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, true);
+            Directory.CreateDirectory(dir);
+            return dir;
+        }
+
+        // stands in for setup's own program and the app: any bytes do
+        private static string WriteBytes(string dir, string name, int length, int seed)
+        {
+            var bytes = new byte[length];
+            new Random(seed).NextBytes(bytes);
+            string path = Path.Combine(dir, name);
+            File.WriteAllBytes(path, bytes);
+            return path;
+        }
+
+        private static bool SameBytes(byte[] a, byte[] b)
+        {
+            if (a == null || b == null || a.Length != b.Length)
+                return false;
+            for (int i = 0; i < a.Length; i++)
+                if (a[i] != b[i])
+                    return false;
+            return true;
+        }
+
+        private static void PackRoundTrip()
+        {
+            string dir = PackDir("pack");
+            string program = WriteBytes(dir, "setup.exe", 50000, 1);
+            string app = WriteBytes(dir, "app.exe", 123457, 2);
+            string installer = Path.Combine(dir, "installer.exe");
+            Payload.Pack(program, app, installer);
+            Check(SameBytes(File.ReadAllBytes(app), Payload.ReadApp(installer)), "app comes back out unchanged");
+            Equal(50000 + 123457 + 16, (int)new FileInfo(installer).Length, "program + app + 16-byte trailer");
+
+            bool refused = false;
+            try { Payload.Pack(installer, app, Path.Combine(dir, "twice.exe")); }
+            catch (InvalidOperationException) { refused = true; }
+            Check(refused, "won't pack an app onto an installer twice");
+        }
+
+        private static void UninstallerLeavesAppOut()
+        {
+            string dir = PackDir("uninstaller");
+            string program = WriteBytes(dir, "setup.exe", 50000, 3);
+            string installer = Path.Combine(dir, "installer.exe");
+            Payload.Pack(program, WriteBytes(dir, "app.exe", 70000, 4), installer);
+            string uninstaller = Path.Combine(dir, "Uninstall.exe");
+            Payload.WriteProgram(installer, uninstaller);
+            Check(SameBytes(File.ReadAllBytes(program), File.ReadAllBytes(uninstaller)), "Uninstall.exe is setup's program alone");
+            Check(Payload.ReadApp(uninstaller) == null, "Uninstall.exe has no app in it");
+        }
+
+        private static void NoPackedApp()
+        {
+            string dir = PackDir("none");
+            Check(Payload.ReadApp(WriteBytes(dir, "plain.exe", 40000, 5)) == null, "a plain file has no app");
+            Check(Payload.ReadApp(WriteBytes(dir, "tiny.exe", 3, 6)) == null, "nor does a file shorter than the trailer");
+
+            // a plain program copies over whole
+            string plain = Path.Combine(dir, "plain.exe"), copy = Path.Combine(dir, "copy.exe");
+            Payload.WriteProgram(plain, copy);
+            Check(SameBytes(File.ReadAllBytes(plain), File.ReadAllBytes(copy)), "a program with no app copies whole");
+        }
+
+        // this test program has every translation built in, so it stands in for UnplugLock.exe
+        private static void CheckBorrowed(Dictionary<string, Func<Dictionary<string, string>>> borrowed, string from)
+        {
+            var expected = new List<string>(Lang.Available);
+            Equal(expected.Count, borrowed.Count, from + ": number of languages");
+            foreach (var name in expected)
+            {
+                Check(borrowed.ContainsKey(name), from + " has " + name);
+                if (borrowed.ContainsKey(name))
+                    Equal(Lang.TableFor(name)["LanguageName"], borrowed[name]()["LanguageName"], from + " " + name + " text");
+            }
+        }
+
+        private static void SetupBorrowsPackedLanguages()
+        {
+            string dir = PackDir("borrow-packed");
+            string installer = Path.Combine(dir, "UnplugLock-Setup.exe");
+            Payload.Pack(WriteBytes(dir, "setup.exe", 30000, 7), Application.ExecutablePath, installer);
+            CheckBorrowed(SetupLanguages.Load(installer), "installer");
+        }
+
+        private static void UninstallerBorrowsInstalledLanguages()
+        {
+            string dir = PackDir("borrow-installed");
+            string uninstaller = WriteBytes(dir, "Uninstall.exe", 30000, 8);
+            File.Copy(Application.ExecutablePath, Path.Combine(dir, "UnplugLock.exe"));
+            CheckBorrowed(SetupLanguages.Load(uninstaller), "uninstaller");
+        }
+
+        private static void SetupEnglishWithoutApp()
+        {
+            string dir = PackDir("borrow-nothing");
+            Equal(0, SetupLanguages.Load(WriteBytes(dir, "Uninstall.exe", 30000, 9)).Count, "no app: no other languages");
+
+            // an app that isn't a program at all is ignored, not a crash
+            string installer = Path.Combine(dir, "UnplugLock-Setup.exe");
+            Payload.Pack(WriteBytes(dir, "setup.exe", 30000, 10), WriteBytes(dir, "junk.exe", 5000, 11), installer);
+            Equal(0, SetupLanguages.Load(installer).Count, "a damaged app: no other languages");
         }
     }
 }
