@@ -42,6 +42,7 @@ namespace UnplugLock
                 return Guard.RunHelper(args);
 
             Ui.Init();
+            Lang.Use(Settings.Load(false).Language);
 
             bool isFirst;
             using (var mutex = new Mutex(true, @"Local\UnplugLock.SingleInstance", out isFirst))
@@ -56,7 +57,7 @@ namespace UnplugLock
                     }
                     catch
                     {
-                        MessageBox.Show("UnplugLock is already running.", "UnplugLock",
+                        MessageBox.Show(Lang.T("AlreadyRunning"), "UnplugLock",
                             MessageBoxButtons.OK, MessageBoxIcon.Information);
                     }
                     return 0;
@@ -1021,6 +1022,7 @@ namespace UnplugLock
         public bool Guard = true;
         public bool LockOnEthernet = false; // also lock when a wired network drops
         public bool LockOnWifi = false;     // also lock when Wi-Fi disconnects
+        public string Language;             // picked in setup ("de", "en", ...); null follows Windows
 
         // only PBKDF2 hashes + salts get stored
         private string _passwordHash;
@@ -1095,6 +1097,7 @@ namespace UnplugLock
             s.LockOnEthernet = reg.LockOnEthernet || bak.LockOnEthernet;
             s.LockOnWifi = reg.LockOnWifi || bak.LockOnWifi;
             s.DelaySeconds = Math.Min(reg.DelaySeconds, bak.DelaySeconds);
+            s.Language = reg.Language ?? bak.Language; // nothing to be strict about
             return s;
         }
 
@@ -1139,7 +1142,7 @@ namespace UnplugLock
             return o != null &&
                    o.Enabled == Enabled && o.DelaySeconds == DelaySeconds &&
                    o.HideIcon == HideIcon && o.Guard == Guard &&
-                   o.LockOnEthernet == LockOnEthernet && o.LockOnWifi == LockOnWifi &&
+                   o.LockOnEthernet == LockOnEthernet && o.LockOnWifi == LockOnWifi && o.Language == Language &&
                    o._passwordHash == _passwordHash && o._passwordSalt == _passwordSalt &&
                    o._recoveryHash == _recoveryHash && o._recoverySalt == _recoverySalt;
         }
@@ -1159,6 +1162,7 @@ namespace UnplugLock
                     s.Guard = Convert.ToInt32(key.GetValue("Guard", 1)) != 0;
                     s.LockOnEthernet = Convert.ToInt32(key.GetValue("LockOnEthernet", 0)) != 0;
                     s.LockOnWifi = Convert.ToInt32(key.GetValue("LockOnWifi", 0)) != 0;
+                    s.Language = NullIfEmpty(key.GetValue("Language") as string);
                     s._passwordHash = NullIfEmpty(key.GetValue("PasswordHash") as string);
                     s._passwordSalt = NullIfEmpty(key.GetValue("PasswordSalt") as string);
                     s._recoveryHash = NullIfEmpty(key.GetValue("RecoveryHash") as string);
@@ -1183,6 +1187,7 @@ namespace UnplugLock
                 key.SetValue("Guard", Guard ? 1 : 0, RegistryValueKind.DWord);
                 key.SetValue("LockOnEthernet", LockOnEthernet ? 1 : 0, RegistryValueKind.DWord);
                 key.SetValue("LockOnWifi", LockOnWifi ? 1 : 0, RegistryValueKind.DWord);
+                SetOrDelete(key, "Language", Language);
                 SetOrDelete(key, "PasswordHash", _passwordHash);
                 SetOrDelete(key, "PasswordSalt", _passwordSalt);
                 SetOrDelete(key, "RecoveryHash", _recoveryHash);
@@ -1229,6 +1234,7 @@ namespace UnplugLock
                         case "Guard": s.Guard = value == "1"; break;
                         case "LockOnEthernet": s.LockOnEthernet = value == "1"; break;
                         case "LockOnWifi": s.LockOnWifi = value == "1"; break;
+                        case "Language": s.Language = NullIfEmpty(value); break;
                         case "PasswordHash": s._passwordHash = NullIfEmpty(value); break;
                         case "PasswordSalt": s._passwordSalt = NullIfEmpty(value); break;
                         case "RecoveryHash": s._recoveryHash = NullIfEmpty(value); break;
@@ -1256,6 +1262,7 @@ namespace UnplugLock
                 "Guard=" + (Guard ? "1" : "0"),
                 "LockOnEthernet=" + (LockOnEthernet ? "1" : "0"),
                 "LockOnWifi=" + (LockOnWifi ? "1" : "0"),
+                "Language=" + Language,
                 "PasswordHash=" + _passwordHash,
                 "PasswordSalt=" + _passwordSalt,
                 "RecoveryHash=" + _recoveryHash,
@@ -1481,25 +1488,19 @@ namespace UnplugLock
 
         private static string TitleFor(Mode mode)
         {
-            return mode == Mode.ChooseNew ? "Choose a password"
-                 : mode == Mode.RecoveryCode ? "Enter your recovery code"
-                 : "Enter your password";
-        }
-
-        // prompts are written as "...to do this:" - read better as a sentence under the title
-        private static string Sentence(string prompt)
-        {
-            return prompt.EndsWith(":") ? prompt.Substring(0, prompt.Length - 1) + "." : prompt;
+            return Lang.T(mode == Mode.ChooseNew ? "Pw.TitleChoose"
+                        : mode == Mode.RecoveryCode ? "Pw.TitleRecovery"
+                        : "Pw.TitleEnter");
         }
 
         private PasswordDialog(string prompt, Mode mode, Settings settings)
-            : base("UnplugLock", TitleFor(mode), Sentence(prompt), 340, false)
+            : base("UnplugLock", TitleFor(mode), prompt, 340, false)
         {
             _mode = mode;
             _settings = settings;
             TopMost = true;
 
-            AddText(mode == Mode.ChooseNew ? "New password" : mode == Mode.RecoveryCode ? "Recovery code" : "Password",
+            AddText(Lang.T(mode == Mode.ChooseNew ? "Pw.LabelNew" : mode == Mode.RecoveryCode ? "Pw.LabelRecovery" : "Pw.Label"),
                 Ui.Ink, Ui.Strong, 6);
             _first = new TextBox
             {
@@ -1517,9 +1518,8 @@ namespace UnplugLock
             if (mode == Mode.ChooseNew)
             {
                 // the hashes can be read by anything running as you, so a reused password could be guessed offline
-                AddText("At least " + MinLength + " characters. Don't reuse your Windows password or PIN.",
-                    Ui.Muted, Ui.Small, 0).Margin = Ui.S(0, 6, 0, 16);
-                AddText("Confirm password", Ui.Ink, Ui.Strong, 6);
+                AddText(Lang.T("Pw.Hint", MinLength), Ui.Muted, Ui.Small, 0).Margin = Ui.S(0, 6, 0, 16);
+                AddText(Lang.T("Pw.LabelConfirm"), Ui.Ink, Ui.Strong, 6);
                 _second = new TextBox { UseSystemPasswordChar = true, Width = ContentWidth, Margin = Padding.Empty };
                 Body.Controls.Add(_second);
             }
@@ -1532,7 +1532,7 @@ namespace UnplugLock
             {
                 var forgot = new LinkLabel
                 {
-                    Text = "Forgot password?",
+                    Text = Lang.T("Pw.Forgot"),
                     AutoSize = true,
                     LinkBehavior = LinkBehavior.HoverUnderline,
                     LinkColor = Ui.Brand,
@@ -1543,9 +1543,9 @@ namespace UnplugLock
                 SetFooterNote(forgot);
             }
 
-            var cancel = AddButton("Cancel", false);
+            var cancel = AddButton(Lang.T("Button.Cancel"), false);
             cancel.DialogResult = DialogResult.Cancel;
-            var ok = AddButton(mode == Mode.ChooseNew ? "Set password" : "Continue", true);
+            var ok = AddButton(Lang.T(mode == Mode.ChooseNew ? "Pw.Set" : "Button.Continue"), true);
             ok.Click += OnOk;
 
             AcceptButton = ok;
@@ -1565,13 +1565,13 @@ namespace UnplugLock
             {
                 if (_first.Text.Length < MinLength)
                 {
-                    ShowError("Use at least " + MinLength + " characters.");
+                    ShowError(Lang.T("Pw.TooShort", MinLength));
                     _first.Focus();
                     return;
                 }
                 if (_first.Text != _second.Text)
                 {
-                    ShowError("The passwords don't match.");
+                    ShowError(Lang.T("Pw.Mismatch"));
                     _second.SelectAll();
                     _second.Focus();
                     return;
@@ -1589,9 +1589,7 @@ namespace UnplugLock
             while (true)
             {
                 string code;
-                using (var d = new PasswordDialog(
-                    "Enter your recovery code. It removes your UnplugLock password so you can set a new one.",
-                    Mode.RecoveryCode, null))
+                using (var d = new PasswordDialog(Lang.T("Pw.RecoveryPrompt"), Mode.RecoveryCode, null))
                 {
                     if (d.ShowDialog(this) != DialogResult.OK)
                         return;
@@ -1606,7 +1604,7 @@ namespace UnplugLock
                 }
 
                 Ui.Pause(1000); // slow down guessing
-                MessageBox.Show(this, "That recovery code isn't right.", "UnplugLock",
+                MessageBox.Show(this, Lang.T("Pw.RecoveryWrong"), "UnplugLock",
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
@@ -1633,9 +1631,7 @@ namespace UnplugLock
 
         public static string AskNew()
         {
-            using (var d = new PasswordDialog(
-                "You'll need it to turn off, change the settings of, or exit UnplugLock.",
-                Mode.ChooseNew, null))
+            using (var d = new PasswordDialog(Lang.T("Pw.NewPrompt"), Mode.ChooseNew, null))
                 return d.ShowDialog() == DialogResult.OK ? d._first.Text : null;
         }
     }
@@ -1647,16 +1643,14 @@ namespace UnplugLock
         private bool _confirmed;
 
         private RecoveryCodeDialog(string code)
-            : base("UnplugLock", "Save your recovery code", "It's the only way back in if you forget your password.", 420, false)
+            : base("UnplugLock", Lang.T("Rc.Title"), Lang.T("Rc.Subtitle"), 420, false)
         {
             _code = code;
             ControlBox = false;
             TopMost = true;
 
-            AddText("If you forget your password, click \"Forgot password?\" on the password prompt " +
-                    "and enter this code. It removes the password so you can set a new one.", Ui.Ink, Ui.Body, 10);
-            AddText("Keep it somewhere other than this laptop, like your phone, a password manager or on paper. " +
-                    "It won't be shown again.", Ui.Ink, Ui.Body, 18);
+            AddText(Lang.T("Rc.Explain", Lang.T("Pw.Forgot")), Ui.Ink, Ui.Body, 10);
+            AddText(Lang.T("Rc.Keep"), Ui.Ink, Ui.Body, 18);
 
             var codeBox = new TextBox
             {
@@ -1671,14 +1665,14 @@ namespace UnplugLock
             };
             Body.Controls.Add(codeBox);
 
-            var copy = new RoundButton("Copy", false) { Margin = Padding.Empty };
-            var save = new RoundButton("Save to file...", false);
+            var copy = new RoundButton(Lang.T("Rc.Copy"), false) { Margin = Padding.Empty };
+            var save = new RoundButton(Lang.T("Rc.Save"), false);
             copy.Click += delegate
             {
                 try
                 {
                     Clipboard.SetDataObject(ClipboardData(_code), true);
-                    copy.Text = "Copied";
+                    copy.Text = Lang.T("Rc.Copied");
                 }
                 catch { /* clipboard busy */ }
             };
@@ -1688,10 +1682,10 @@ namespace UnplugLock
             tools.Controls.Add(save);
             Body.Controls.Add(tools);
 
-            var check = new CheckBox { Text = "I've saved my recovery code", AutoSize = true, Margin = Padding.Empty };
+            var check = new CheckBox { Text = Lang.T("Rc.Confirm"), AutoSize = true, Margin = Padding.Empty };
             Body.Controls.Add(check);
 
-            var ok = AddButton("Done", true);
+            var ok = AddButton(Lang.T("Button.Done"), true);
             ok.Enabled = false;
             check.CheckedChanged += delegate { ok.Enabled = check.Checked; };
             ok.Click += delegate
@@ -1741,8 +1735,8 @@ namespace UnplugLock
         {
             using (var dlg = new SaveFileDialog
             {
-                FileName = "UnplugLock recovery code.txt",
-                Filter = "Text file (*.txt)|*.txt",
+                FileName = Lang.T("Rc.FileTitle") + ".txt",
+                Filter = Lang.T("Rc.FileType") + " (*.txt)|*.txt",
                 // start at "This PC", so a USB stick is as easy to pick as Documents
                 InitialDirectory = "::{20D04FE0-3AEA-1069-A2D8-08002B30309D}"
             })
@@ -1751,25 +1745,27 @@ namespace UnplugLock
                     return;
                 try
                 {
-                    File.WriteAllText(dlg.FileName,
-                        "UnplugLock recovery code\r\n\r\n" + _code + "\r\n\r\n" +
-                        "If you forget your UnplugLock password, click \"Forgot password?\" on the password prompt\r\n" +
-                        "and enter this code. Created " + DateTime.Now.ToString("d MMMM yyyy") + ".\r\n");
+                    File.WriteAllText(dlg.FileName, RecoveryFileText(_code, DateTime.Now), new System.Text.UTF8Encoding(true));
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(this, "Couldn't save the file:\n" + ex.Message, "UnplugLock",
+                    MessageBox.Show(this, Lang.T("Rc.SaveFailed", ex.Message), "UnplugLock",
                         MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
 
                 if (IsOnThisLaptop(dlg.FileName))
-                    MessageBox.Show(this,
-                        "Saved. This file is on the laptop's own drive, so anyone who takes the laptop could find it " +
-                        "and use the code to remove your password.\n\n" +
-                        "Copy it to a USB stick, your phone or a password manager, then delete it from this laptop.",
+                    MessageBox.Show(this, Lang.T("Rc.SavedOnLaptop"),
                         "UnplugLock", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
+        }
+
+        // saved with a UTF-8 BOM, so Notepad shows non-English text right on any Windows version
+        internal static string RecoveryFileText(string code, DateTime created)
+        {
+            return Lang.T("Rc.FileTitle") + "\r\n\r\n" + code + "\r\n\r\n" +
+                Lang.T("Rc.FileHelp", Lang.T("Pw.Forgot")) + "\r\n" +
+                Lang.T("Rc.FileCreated", created.ToString(Lang.T("Rc.DateFormat"), Lang.Culture)) + "\r\n";
         }
 
         public static void Present(string code)
@@ -1787,16 +1783,16 @@ namespace UnplugLock
         public const string SupportUrl = "https://donate.stripe.com/14A6oH5tB2aog7J8HAfIs00";
 
         private AboutDialog()
-            : base("About UnplugLock", "UnplugLock", "Version " + Program.Version, 340, true)
+            : base(Lang.T("About.Window"), "UnplugLock", Lang.T("Version", Program.Version), 340, true)
         {
-            AddText("Locks your laptop the moment the charger is unplugged.", Ui.Ink, Ui.Body, 14);
+            AddText(Lang.T("AppTagline"), Ui.Ink, Ui.Body, 14);
             AddLink("www.unpluglock.com", WebsiteUrl);
-            AddLink("Source code on GitHub", SourceUrl);
-            AddLink("Check for new releases", ReleasesUrl);
-            AddLink("Support UnplugLock", SupportUrl).Margin = Padding.Empty;
+            AddLink(Lang.T("About.Source"), SourceUrl);
+            AddLink(Lang.T("About.Releases"), ReleasesUrl);
+            AddLink(Lang.T("About.Support"), SupportUrl).Margin = Padding.Empty;
 
-            SetFooterNote(Ui.Text("Free and open source, MIT License", ContentWidth - Ui.S(110), Ui.Muted, Ui.Small, 0));
-            var close = AddButton("Close", true);
+            SetFooterNote(Ui.Text(Lang.T("About.License"), ContentWidth - Ui.S(110), Ui.Muted, Ui.Small, 0));
+            var close = AddButton(Lang.T("Button.Close"), true);
             close.DialogResult = DialogResult.OK;
             AcceptButton = close;
             CancelButton = close;
@@ -2116,41 +2112,41 @@ namespace UnplugLock
 
             _statusItem = new ToolStripMenuItem { Enabled = false };
 
-            _enabledItem = new ToolStripMenuItem("Enabled", null, delegate { Guarded(ToggleEnabled); });
+            _enabledItem = new ToolStripMenuItem(Lang.T("Menu.Enabled"), null, delegate { Guarded(ToggleEnabled); });
 
-            _delayMenu = new ToolStripMenuItem("Lock delay");
+            _delayMenu = new ToolStripMenuItem(Lang.T("Menu.Delay"));
             foreach (int d in DelayChoices)
             {
                 int seconds = d;
-                var item = new ToolStripMenuItem(seconds == 0 ? "Instant" : seconds + (seconds == 1 ? " second" : " seconds"));
+                var item = new ToolStripMenuItem(seconds == 0 ? Lang.T("Delay.Instant") : Lang.Seconds(seconds));
                 item.Tag = seconds;
                 item.Click += delegate { Guarded(delegate { SetDelay(seconds); }); };
                 _delayMenu.DropDownItems.Add(item);
             }
 
-            _ethernetItem = new ToolStripMenuItem("Ethernet is unplugged", null,
+            _ethernetItem = new ToolStripMenuItem(Lang.T("Menu.Ethernet"), null,
                 delegate { Guarded(delegate { ToggleNetLock(NetKind.Ethernet); }); });
-            _wifiItem = new ToolStripMenuItem("Wi-Fi disconnects", null,
+            _wifiItem = new ToolStripMenuItem(Lang.T("Menu.Wifi"), null,
                 delegate { Guarded(delegate { ToggleNetLock(NetKind.Wifi); }); });
-            var alsoMenu = new ToolStripMenuItem("Also lock when");
+            var alsoMenu = new ToolStripMenuItem(Lang.T("Menu.AlsoLock"));
             alsoMenu.DropDownItems.Add(_ethernetItem);
             alsoMenu.DropDownItems.Add(_wifiItem);
 
-            _startupItem = new ToolStripMenuItem("Start with Windows", null, delegate { Guarded(ToggleStartup); });
-            var hideItem = new ToolStripMenuItem("Hide tray icon", null, delegate { Guarded(HideTrayIcon); });
-            _guardItem = new ToolStripMenuItem("Guard process (auto-restart)", null, delegate { Guarded(ToggleGuard); });
+            _startupItem = new ToolStripMenuItem(Lang.T("Menu.Startup"), null, delegate { Guarded(ToggleStartup); });
+            var hideItem = new ToolStripMenuItem(Lang.T("Menu.Hide"), null, delegate { Guarded(HideTrayIcon); });
+            _guardItem = new ToolStripMenuItem(Lang.T("Menu.Guard"), null, delegate { Guarded(ToggleGuard); });
 
-            _setPasswordItem = new ToolStripMenuItem("Set password...", null, delegate { Guarded(SetPassword); });
-            _removePasswordItem = new ToolStripMenuItem("Remove password", null, delegate { Guarded(RemovePassword); });
-            var passwordMenu = new ToolStripMenuItem("Password");
+            _setPasswordItem = new ToolStripMenuItem(Lang.T("Menu.SetPassword"), null, delegate { Guarded(SetPassword); });
+            _removePasswordItem = new ToolStripMenuItem(Lang.T("Menu.RemovePassword"), null, delegate { Guarded(RemovePassword); });
+            var passwordMenu = new ToolStripMenuItem(Lang.T("Menu.Password"));
             passwordMenu.DropDownItems.Add(_setPasswordItem);
             passwordMenu.DropDownItems.Add(_removePasswordItem);
 
-            var lockNowItem = new ToolStripMenuItem("Lock now", null, delegate { TestLock(); });
-            var aboutItem = new ToolStripMenuItem("About UnplugLock...", null, delegate { Guarded(AboutDialog.Present); });
-            var exitItem = new ToolStripMenuItem("Exit", null, delegate { Guarded(Exit); });
+            var lockNowItem = new ToolStripMenuItem(Lang.T("Menu.LockNow"), null, delegate { TestLock(); });
+            var aboutItem = new ToolStripMenuItem(Lang.T("Menu.About"), null, delegate { Guarded(AboutDialog.Present); });
+            var exitItem = new ToolStripMenuItem(Lang.T("Menu.Exit"), null, delegate { Guarded(Exit); });
 
-            _signInItem = new ToolStripMenuItem("Windows has no password - set one up...",
+            _signInItem = new ToolStripMenuItem(Lang.T("Menu.NoSignIn"),
                 SystemIcons.Warning.ToBitmap(), delegate { WindowsSignIn.OpenSettings(); }) { Visible = false };
             _signInSeparator = new ToolStripSeparator { Visible = false };
 
@@ -2254,10 +2250,7 @@ namespace UnplugLock
         private void WarnNoSignIn()
         {
             _signInBalloon = true;
-            _tray.ShowBalloonTip(10000, "Your Windows account has no password",
-                "UnplugLock can lock the screen, but anyone can click straight back in. " +
-                "Click here to set up a password or PIN.",
-                ToolTipIcon.Warning);
+            _tray.ShowBalloonTip(10000, Lang.T("NoSignIn.Title"), Lang.T("NoSignIn.Text"), ToolTipIcon.Warning);
         }
 
         private void OnTick()
@@ -2497,9 +2490,7 @@ namespace UnplugLock
             if (LockWorkStation())
                 return;
             int error = Marshal.GetLastWin32Error();
-            MessageBox.Show("Windows didn't lock (error " + error + "). When the charger is pulled, UnplugLock " +
-                "keeps trying for 10 minutes, so it locks as soon as Windows allows it.", "UnplugLock",
-                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            MessageBox.Show(Lang.T("LockFailed", error), "UnplugLock", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 
         private void ClearPending()
@@ -2525,7 +2516,8 @@ namespace UnplugLock
             }
         }
 
-        private bool Authorize(string toDoWhat)
+        // promptKey is an Auth.* text saying what the password is for
+        private bool Authorize(string promptKey)
         {
             if (!_settings.HasPassword)
                 return true;
@@ -2533,15 +2525,14 @@ namespace UnplugLock
             while (true)
             {
                 string pw;
-                var result = PasswordDialog.Ask("Enter your UnplugLock password to " + toDoWhat + ":", _settings, out pw);
+                var result = PasswordDialog.Ask(Lang.T(promptKey), _settings, out pw);
                 if (result == AskResult.Cancelled)
                     return false;
                 if (result == AskResult.Recovered)
                 {
                     _settings.SetPassword(null);
                     _settings.Save();
-                    MessageBox.Show("Recovery code accepted. Your password has been removed. " +
-                        "Set a new one from the Password menu.", "UnplugLock",
+                    MessageBox.Show(Lang.T("Auth.Recovered"), "UnplugLock",
                         MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return true;
                 }
@@ -2550,13 +2541,13 @@ namespace UnplugLock
                     return true;
 
                 Ui.Pause(1000); // slow down guessing
-                MessageBox.Show("Wrong password.", "UnplugLock", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(Lang.T("WrongPassword"), "UnplugLock", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
 
         private void ToggleEnabled()
         {
-            if (_settings.Enabled && !Authorize("turn it off"))
+            if (_settings.Enabled && !Authorize("Auth.TurnOff"))
                 return;
 
             _settings.Enabled = !_settings.Enabled;
@@ -2568,8 +2559,7 @@ namespace UnplugLock
         private void ToggleNetLock(NetKind kind)
         {
             bool on = Watches(kind);
-            if (on && !Authorize(kind == NetKind.Ethernet ? "stop locking when Ethernet is unplugged"
-                                                          : "stop locking when Wi-Fi disconnects"))
+            if (on && !Authorize(kind == NetKind.Ethernet ? "Auth.StopEthernet" : "Auth.StopWifi"))
                 return;
 
             if (kind == NetKind.Ethernet)
@@ -2591,7 +2581,7 @@ namespace UnplugLock
 
         private void SetDelay(int seconds)
         {
-            if (seconds == _settings.DelaySeconds || !Authorize("change the lock delay"))
+            if (seconds == _settings.DelaySeconds || !Authorize("Auth.Delay"))
                 return;
             _settings.DelaySeconds = seconds;
             _settings.Save();
@@ -2601,7 +2591,7 @@ namespace UnplugLock
         {
             if (_settings.Guard)
             {
-                if (!Authorize("turn off the process guard"))
+                if (!Authorize("Auth.Guard"))
                     return;
                 _settings.Guard = false;
                 _settings.Save();
@@ -2619,7 +2609,7 @@ namespace UnplugLock
             if (_settings.Guard)
                 return; // required while guarded
             bool on = Settings.StartsWithWindows;
-            if (on && !Authorize("stop it starting with Windows"))
+            if (on && !Authorize("Auth.Startup"))
                 return;
             try
             {
@@ -2627,16 +2617,14 @@ namespace UnplugLock
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Couldn't change the startup setting:\n" + ex.Message, "UnplugLock",
+                MessageBox.Show(Lang.T("StartupFailed", ex.Message), "UnplugLock",
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
 
         private void HideTrayIcon()
         {
-            var answer = MessageBox.Show(
-                "The tray icon will be hidden, but UnplugLock keeps running and protecting your laptop.\n\n" +
-                "To show the icon again, open UnplugLock again (from the Start menu or UnplugLock.exe).",
+            var answer = MessageBox.Show(Lang.T("HideConfirm"),
                 "UnplugLock", MessageBoxButtons.OKCancel, MessageBoxIcon.Information);
             if (answer != DialogResult.OK)
                 return;
@@ -2657,15 +2645,13 @@ namespace UnplugLock
                 return;
             }
             _signInBalloon = false;
-            _tray.ShowBalloonTip(4000, "UnplugLock is running",
-                _settings.Enabled ? "Your laptop locks when unplugged. Right-click the icon for options."
-                                  : "UnplugLock is turned off. Right-click the icon for options.",
-                ToolTipIcon.Info);
+            _tray.ShowBalloonTip(4000, Lang.T("Running.Title"),
+                Lang.T(_settings.Enabled ? "Running.On" : "Running.Off"), ToolTipIcon.Info);
         }
 
         private void SetPassword()
         {
-            if (_settings.HasPassword && !Authorize("change the password"))
+            if (_settings.HasPassword && !Authorize("Auth.ChangePassword"))
                 return;
 
             string pw = PasswordDialog.AskNew();
@@ -2684,16 +2670,16 @@ namespace UnplugLock
 
         private void RemovePassword()
         {
-            if (!_settings.HasPassword || !Authorize("remove the password"))
+            if (!_settings.HasPassword || !Authorize("Auth.RemovePassword"))
                 return;
             _settings.SetPassword(null);
             _settings.Save();
-            MessageBox.Show("Password removed.", "UnplugLock", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(Lang.T("PasswordRemoved"), "UnplugLock", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         private void Exit()
         {
-            if (Authorize("exit"))
+            if (Authorize("Auth.Exit"))
                 Quit();
         }
 
@@ -2713,16 +2699,16 @@ namespace UnplugLock
             string power;
             switch (_lastStatus)
             {
-                case PowerLineStatus.Online: power = "Plugged in"; break;
-                case PowerLineStatus.Offline: power = "On battery"; break;
-                default: power = "Power status unknown"; break;
+                case PowerLineStatus.Online: power = "Online"; break;
+                case PowerLineStatus.Offline: power = "Offline"; break;
+                default: power = "Unknown"; break;
             }
 
-            _statusItem.Text = power;
+            _statusItem.Text = Lang.T("Power." + power);
             _enabledItem.Checked = _settings.Enabled;
             _startupItem.Checked = Settings.StartsWithWindows;
             _startupItem.Enabled = !_settings.Guard;
-            _startupItem.Text = _settings.Guard ? "Start with Windows (required by guard)" : "Start with Windows";
+            _startupItem.Text = Lang.T(_settings.Guard ? "Menu.StartupGuarded" : "Menu.Startup");
             _guardItem.Checked = _settings.Guard;
             _ethernetItem.Checked = _settings.LockOnEthernet;
             _wifiItem.Checked = _settings.LockOnWifi;
@@ -2732,15 +2718,15 @@ namespace UnplugLock
                 if (mi != null)
                     mi.Checked = (int)mi.Tag == _settings.DelaySeconds;
             }
-            _setPasswordItem.Text = _settings.HasPassword ? "Change password..." : "Set password...";
+            _setPasswordItem.Text = Lang.T(_settings.HasPassword ? "Menu.ChangePassword" : "Menu.SetPassword");
             _removePasswordItem.Enabled = _settings.HasPassword;
             _signInItem.Visible = _noSignIn;
             _signInSeparator.Visible = _noSignIn;
 
             _tray.Icon = _settings.Enabled ? _iconOn : _iconOff;
             string tip = _noSignIn
-                ? "UnplugLock - Windows has no password, locking won't help"
-                : "UnplugLock - " + (_settings.Enabled ? "on" : "off") + " (" + power.ToLowerInvariant() + ")";
+                ? Lang.T("Tip.NoSignIn")
+                : Lang.T(_settings.Enabled ? "Tip.On" : "Tip.Off", Lang.T("Tip." + power));
             _tray.Text = tip.Length > 63 ? tip.Substring(0, 63) : tip; // tooltip max is 63 chars
         }
 

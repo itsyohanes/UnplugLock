@@ -8,9 +8,10 @@ set ROOT=%~dp0
 rem must match Version in UnplugLock.cs
 set VERSION=1.3.1
 set SETUP=UnplugLock-Setup-v%VERSION%.exe
-set ARGS=/nologo /target:winexe /optimize+ /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Core.dll
+set ARGS=/nologo /codepage:65001 /target:winexe /optimize+ /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Core.dll
 
-set SRC="%ROOT%UnplugLock.cs"
+rem the translations in lang\ are UTF-8, hence /codepage:65001
+set SRC="%ROOT%UnplugLock.cs" "%ROOT%Lang.cs" "%ROOT%lang\*.cs"
 
 if not exist "%ROOT%UnplugLock.ico" (
   "%CSC%" %ARGS% /out:"%ROOT%UnplugLock.exe" %SRC% || exit /b 1

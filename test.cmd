@@ -10,6 +10,6 @@ set ROOT=%~dp0
 
 "%CSC%" /nologo /codepage:65001 /target:exe /optimize+ /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Core.dll ^
   /main:UnplugLock.Tests.TestProgram /out:"%ROOT%tests\UnplugLockTests.exe" ^
-  "%ROOT%tests\Tests.cs" "%ROOT%UnplugLock.cs" "%ROOT%Setup.cs" || exit /b 1
+  "%ROOT%tests\Tests.cs" "%ROOT%UnplugLock.cs" "%ROOT%Setup.cs" "%ROOT%Lang.cs" "%ROOT%lang\*.cs" || exit /b 1
 
 "%ROOT%tests\UnplugLockTests.exe" %*
