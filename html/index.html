@@ -358,9 +358,17 @@
     <p class="wordmark" aria-hidden="true">UnplugLock</p>
   </footer>
   <script>
-    // language picker: close it on a click outside or on Escape
+    // language picker: close it on a click outside or on Escape, and show the
+    // "more below" arrow while the list can still scroll down
     (function () {
       var pick = document.querySelector(".lang");
+      var list = pick.querySelector("ul");
+      function more() {
+        list.toggleAttribute("data-more", list.scrollTop + list.clientHeight < list.scrollHeight - 4);
+      }
+      pick.addEventListener("toggle", more);
+      list.addEventListener("scroll", more, { passive: true });
+      window.addEventListener("resize", function () { if (pick.open) more(); });
       document.addEventListener("click", function (e) {
         if (pick.open && !pick.contains(e.target)) pick.open = false;
       });

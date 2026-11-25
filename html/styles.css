@@ -242,6 +242,28 @@ h3,
   box-shadow: 0 12px 32px rgba(21, 23, 28, 0.12);
 }
 
+/* more languages below: a fade and a down arrow pinned to the bottom of the list,
+   shown while it can still scroll down (the script sets data-more) */
+.lang ul::after {
+  content: "";
+  position: sticky;
+  bottom: -6px;
+  display: block;
+  height: 48px;
+  margin: -48px -6px -6px;
+  border-radius: 0 0 12px 12px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%235b606b' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center bottom 10px / 12px 8px no-repeat,
+    linear-gradient(rgba(255, 255, 255, 0), var(--bg) 65%);
+}
+
+.lang ul[data-more]::after {
+  opacity: 1;
+}
+
 .top nav .lang li a {
   display: flex;
   align-items: center;
