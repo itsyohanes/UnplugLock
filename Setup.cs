@@ -1,10 +1,12 @@
-// Installer/uninstaller. Builds together with UnplugLock.cs and embeds UnplugLock.exe.
+// Installer/uninstaller. Builds together with UnplugLock.cs, and build.cmd adds UnplugLock.exe
+// onto the end of it (see Payload).
 // Installs per-user to %LOCALAPPDATA%\Programs\UnplugLock, no admin needed.
 //
 // UnplugLock-Setup.exe [/silent] [/nostartup] [/nolaunch] [/desktop] [/noguard]
 // Uninstall.exe [/uninstall] [/silent]
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -61,6 +63,13 @@ namespace UnplugLock
         [STAThread]
         private static int Main(string[] args)
         {
+            // build step (build.cmd): adds the app onto the end of this program to make the installer
+            if (args.Length == 4 && args[0] == "--pack")
+            {
+                Payload.Pack(args[1], args[2], args[3]);
+                return 0;
+            }
+
             Ui.Init();
             Lang.Use(Settings.Load(false).Language);
 
@@ -146,17 +155,14 @@ namespace UnplugLock
                 settings.Language = language;
             settings.Save();
 
-            using (var payload = Assembly.GetExecutingAssembly().GetManifestResourceStream("UnplugLock.exe"))
-            {
-                if (payload == null)
-                    throw new InvalidOperationException(Lang.T("Setup.Damaged"));
-                using (var file = File.Create(AppExe))
-                    payload.CopyTo(file);
-            }
+            byte[] app = Payload.ReadApp(Application.ExecutablePath);
+            if (app == null)
+                throw new InvalidOperationException(Lang.T("Setup.Damaged"));
+            File.WriteAllBytes(AppExe, app);
 
-            // copy ourselves over as the uninstaller
+            // copy ourselves over as the uninstaller, without the app it would never use
             if (!SamePath(Application.ExecutablePath, UninstallExe))
-                File.Copy(Application.ExecutablePath, UninstallExe, true);
+                Payload.WriteProgram(Application.ExecutablePath, UninstallExe);
 
             CreateShortcut(StartMenuLink, AppExe);
             if (desktopShortcut)
@@ -553,6 +559,145 @@ namespace UnplugLock
             _install.Click += delegate { Close(); };
             ResumeLayout(true);
             _install.Focus();
+        }
+    }
+
+    // The installer is setup's own program with UnplugLock.exe added on the end, then a 16-byte
+    // trailer: the app's length and a marker. build.cmd puts them together with "--pack".
+    // Uninstall.exe is the program on its own, so it doesn't carry a copy of the app it never uses.
+    internal static class Payload
+    {
+        private static readonly byte[] Marker = { 0x55, 0x6C, 0x41, 0x70, 0x70, 0x30, 0x30, 0x31 }; // "UlApp001"
+        private const int TrailerSize = 16;
+
+        public static void Pack(string program, string app, string output)
+        {
+            byte[] appBytes = File.ReadAllBytes(app);
+            using (var input = OpenRead(program))
+            using (var file = File.Create(output))
+            {
+                if (AppLength(input) != 0)
+                    throw new InvalidOperationException(program + " already has an app packed in");
+                input.Position = 0;
+                input.CopyTo(file);
+                file.Write(appBytes, 0, appBytes.Length);
+                file.Write(BitConverter.GetBytes((long)appBytes.Length), 0, 8);
+                file.Write(Marker, 0, Marker.Length);
+            }
+        }
+
+        // the app packed onto the end of file, or null if it has none
+        public static byte[] ReadApp(string file)
+        {
+            using (var input = OpenRead(file))
+            {
+                long length = AppLength(input);
+                if (length == 0)
+                    return null;
+                var app = new byte[length];
+                input.Position = input.Length - TrailerSize - length;
+                ReadFully(input, app);
+                return app;
+            }
+        }
+
+        // copies file to output without the app on its end
+        public static void WriteProgram(string file, string output)
+        {
+            using (var input = OpenRead(file))
+            using (var copy = File.Create(output))
+            {
+                long length = AppLength(input);
+                long remaining = length == 0 ? input.Length : input.Length - TrailerSize - length;
+                input.Position = 0;
+                var buffer = new byte[81920];
+                while (remaining > 0)
+                {
+                    int read = input.Read(buffer, 0, (int)Math.Min(buffer.Length, remaining));
+                    if (read <= 0)
+                        throw new EndOfStreamException();
+                    copy.Write(buffer, 0, read);
+                    remaining -= read;
+                }
+            }
+        }
+
+        // a running program can still be read
+        private static FileStream OpenRead(string file)
+        {
+            return new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        }
+
+        private static long AppLength(FileStream input)
+        {
+            if (input.Length < TrailerSize)
+                return 0;
+            var trailer = new byte[TrailerSize];
+            input.Position = input.Length - TrailerSize;
+            ReadFully(input, trailer);
+            for (int i = 0; i < Marker.Length; i++)
+                if (trailer[8 + i] != Marker[i])
+                    return 0;
+            long length = BitConverter.ToInt64(trailer, 0);
+            return length > 0 && length <= input.Length - TrailerSize ? length : 0;
+        }
+
+        private static void ReadFully(Stream input, byte[] buffer)
+        {
+            for (int done = 0; done < buffer.Length; )
+            {
+                int read = input.Read(buffer, done, buffer.Length - done);
+                if (read <= 0)
+                    throw new EndOfStreamException();
+                done += read;
+            }
+        }
+    }
+
+    // Setup has only English built in. Its other languages come from the app instead of a second
+    // copy: the installer reads them from the app packed on its end, and Uninstall.exe from the
+    // installed UnplugLock.exe next to it. With neither there, setup is in English.
+    internal static class SetupLanguages
+    {
+        public static Dictionary<string, Func<Dictionary<string, string>>> Load()
+        {
+            return Load(Application.ExecutablePath);
+        }
+
+        internal static Dictionary<string, Func<Dictionary<string, string>>> Load(string program)
+        {
+            try
+            {
+                byte[] app = Payload.ReadApp(program);
+                if (app == null)
+                {
+                    string installed = Path.Combine(Path.GetDirectoryName(program), "UnplugLock.exe");
+                    if (File.Exists(installed))
+                        app = File.ReadAllBytes(installed); // loaded from memory, so it can still be deleted
+                }
+                if (app != null)
+                    return FromApp(Assembly.Load(app));
+            }
+            catch { /* a damaged or unexpected app: English it is */ }
+            return new Dictionary<string, Func<Dictionary<string, string>>>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        internal static Dictionary<string, Func<Dictionary<string, string>>> FromApp(Assembly app)
+        {
+            const BindingFlags flags = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
+            Type lang = app.GetType("UnplugLock.Lang", true);
+            var available = (IEnumerable<string>)lang.GetProperty("Available", flags).GetValue(null, null);
+            MethodInfo tableFor = lang.GetMethod("TableFor", flags);
+            var languages = new Dictionary<string, Func<Dictionary<string, string>>>(StringComparer.OrdinalIgnoreCase);
+            foreach (string name in available)
+            {
+                string language = name;
+                languages[language] = delegate
+                {
+                    return (Dictionary<string, string>)tableFor.Invoke(null, new object[] { language });
+                };
+            }
+            return languages;
         }
     }
 
