@@ -46,13 +46,13 @@ The laptop itself can be replaced. What's harder to replace is everything you're
 - **Hidden mode.** Hide the tray icon. UnplugLock keeps running, and opening it again brings the icon back.
 - **Starts with Windows**, if you want it to. It always does while the process guard is on.
 - **19 languages.** English, Čeština, Deutsch, Español, Français, Bahasa Indonesia, Italiano, 日本語, 한국어, Nederlands, Polski, Português (Brasil), Tiếng Việt, Türkçe, Русский, ไทย, Українська, 简体中文 and 繁體中文. Pick one on the installer's first screen. It starts on the Windows language.
-- **Small, with no dependencies.** The app is 270 KB and the installer 400 KB. It uses .NET Framework 4.7.2 or later, which is built into Windows 10 (April 2018 Update and later) and Windows 11.
+- **Small, with no dependencies.** The app is 300 KB and the installer 430 KB. It uses .NET Framework 4.7.2 or later, which is built into Windows 10 (April 2018 Update and later) and Windows 11.
 - **No admin rights needed.** Installs and runs as your normal user.
 - **No telemetry.** No analytics, tracking or update checks. UnplugLock never connects to the internet, so nothing about you or your laptop is sent anywhere, and its settings stay on your laptop.
 
 ## Install
 
-1. Download `UnplugLock-Setup-v1.4.1.exe` from the [Releases](https://github.com/itsyohanes/UnplugLock/releases) page.
+1. Download `UnplugLock-Setup-v1.5.0.exe` from the [Releases](https://github.com/itsyohanes/UnplugLock/releases) page.
 2. Run it and click **Install**.
 3. Look for the blue plug icon in the system tray. You may need to click the **^** arrow next to the clock.
 
@@ -119,7 +119,7 @@ Keep the code safe. Because the settings are tamper-resistant, there's no easy w
 ### Silent install (for scripts)
 
 ```
-UnplugLock-Setup-v1.4.1.exe /silent [/nostartup] [/nolaunch] [/desktop] [/noguard]
+UnplugLock-Setup-v1.5.0.exe /silent [/nostartup] [/nolaunch] [/desktop] [/noguard]
 "%LOCALAPPDATA%\Programs\UnplugLock\Uninstall.exe" /uninstall /silent
 ```
 
