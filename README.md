@@ -151,7 +151,7 @@ This produces:
 | File | Purpose |
 |---|---|
 | `UnplugLock.cs` | The tray app: power detection, locking, process guard, settings, password and recovery code, and the icon drawing |
-| `Setup.cs` | Installer and uninstaller (compiled together with `UnplugLock.cs`) |
+| `Setup.cs` | Installer and uninstaller (compiled together with `UnplugLock.cs`). `build.cmd` adds the app onto the end of it, and setup borrows its translations from that app instead of carrying its own copy. `Uninstall.exe` is written without the app |
 | `Lang.cs` / `lang/` | Picks the language; each translation is its own file in `lang/`, and anything missing falls back to English |
 | `setup.manifest` | Runs setup without asking for admin rights |
 | `build.cmd` | Build script |
