@@ -13,9 +13,11 @@ on:
 permissions:
   contents: write
 
+# A new run waits for the current one instead of cancelling it, so merging and then publishing a
+# release straight away doesn't leave a cancelled run on the commit.
 concurrency:
   group: badges
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   badges:
