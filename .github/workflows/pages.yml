@@ -1,4 +1,6 @@
-# Publishes the website in html/ to GitHub Pages whenever it changes on main.
+# Builds the website from html/ into _site/ (English plus a page per language, see
+# .github/scripts/site-i18n.mjs) and publishes it to GitHub Pages whenever it changes on main.
+# Pull requests only check the translations, so a stale one is caught before merging.
 name: Deploy website
 
 on:
@@ -6,29 +8,56 @@ on:
     branches: [main]
     paths:
       - "html/**"
+      - "lang/**"
+      - ".github/scripts/site-i18n.mjs"
+      - ".github/workflows/pages.yml"
+  pull_request:
+    paths:
+      - "html/**"
+      - "lang/**"
+      - ".github/scripts/site-i18n.mjs"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages
+  group: pages-${{ github.event_name == 'pull_request' && github.ref || 'deploy' }}
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  check:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check the translations
+        run: node .github/scripts/site-i18n.mjs --check
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build the site in every language
+        run: node .github/scripts/site-i18n.mjs
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: html
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v4
