@@ -45,6 +45,7 @@ The laptop itself can be replaced. What's harder to replace is everything you're
 - **Sign-in check.** If your Windows account has no password, UnplugLock warns you when it starts and keeps a reminder at the top of the tray menu, since locking can't keep anyone out without one. Clicking either opens Sign-in options. (It only checks local accounts. Work, school and Microsoft accounts always have a password.)
 - **Hidden mode.** Hide the tray icon. UnplugLock keeps running, and opening it again brings the icon back.
 - **Starts with Windows**, if you want it to. It always does while the process guard is on.
+- **16 languages.** English, Čeština, Deutsch, Español, Français, Bahasa Indonesia, Italiano, 日本語, 한국어, Nederlands, Polski, Português (Brasil), Русский, ไทย, Українська and 简体中文. Pick one on the installer's first screen. It starts on the Windows language.
 - **Small, with no dependencies.** The app is 90 KB and the installer 190 KB. It uses .NET Framework 4.7.2 or later, which is built into Windows 10 (April 2018 Update and later) and Windows 11.
 - **No admin rights needed.** Installs and runs as your normal user.
 - **No telemetry.** No analytics, tracking or update checks. UnplugLock never connects to the internet, so nothing about you or your laptop is sent anywhere, and its settings stay on your laptop.
@@ -151,11 +152,13 @@ This produces:
 |---|---|
 | `UnplugLock.cs` | The tray app: power detection, locking, process guard, settings, password and recovery code, and the icon drawing |
 | `Setup.cs` | Installer and uninstaller (compiled together with `UnplugLock.cs`) |
+| `Lang.cs` / `lang/` | Picks the language; each translation is its own file in `lang/`, and anything missing falls back to English |
 | `setup.manifest` | Runs setup without asking for admin rights |
 | `build.cmd` | Build script |
 | `test.cmd` / `tests/` | Builds and runs the tests |
 | `UnplugLock.ico` / `.png` | App icon, drawn by the app itself (delete the `.ico` and rebuild to regenerate both) |
 | `docs/` | Images used in this README |
+| `html/` | The website. `.github/scripts/site-i18n.mjs` builds a page per language into `_site/` from `html/i18n/` |
 
 To run the tests:
 
@@ -163,9 +166,16 @@ To run the tests:
 test.cmd
 ```
 
-They cover settings storage, repair and tamper resistance, the password and recovery code, quitting, the startup entry, the process guard, lock retries, the network adapter table and the icon. They use their own registry key and folder, so they're safe to run on a machine where UnplugLock is installed. GitHub Actions builds and tests every pull request that changes the code.
+They cover settings storage, repair and tamper resistance, the password and recovery code, quitting, the startup entry, the process guard, lock retries, the network adapter table, the icon and the translations (every translation has the English keys, tray tooltips fit, and every window builds in every language). They use their own registry key and folder, so they're safe to run on a machine where UnplugLock is installed. GitHub Actions builds and tests every pull request that changes the code.
 
-To release a new version, update `VERSION` in `build.cmd` and `Version` in `UnplugLock.cs`.
+To release a new version, update `VERSION` in `build.cmd`, `Version` in `UnplugLock.cs`, the version in `setup.manifest`, and the version and size in `html/index.html`.
+
+To build the website in every language, or only check the translations:
+
+```
+node .github/scripts/site-i18n.mjs
+node .github/scripts/site-i18n.mjs --check
+```
 
 ### How it works
 
