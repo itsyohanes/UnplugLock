@@ -45,7 +45,7 @@ The laptop itself can be replaced. What's harder to replace is everything you're
 - **Sign-in check.** If your Windows account has no password, UnplugLock warns you when it starts and keeps a reminder at the top of the tray menu, since locking can't keep anyone out without one. Clicking either opens Sign-in options. (It only checks local accounts. Work, school and Microsoft accounts always have a password.)
 - **Hidden mode.** Hide the tray icon. UnplugLock keeps running, and opening it again brings the icon back.
 - **Starts with Windows**, if you want it to. It always does while the process guard is on.
-- **16 languages.** English, Čeština, Deutsch, Español, Français, Bahasa Indonesia, Italiano, 日本語, 한국어, Nederlands, Polski, Português (Brasil), Русский, ไทย, Українська and 简体中文. Pick one on the installer's first screen. It starts on the Windows language.
+- **19 languages.** English, Čeština, Deutsch, Español, Français, Bahasa Indonesia, Italiano, 日本語, 한국어, Nederlands, Polski, Português (Brasil), Tiếng Việt, Türkçe, Русский, ไทย, Українська, 简体中文 and 繁體中文. Pick one on the installer's first screen. It starts on the Windows language.
 - **Small, with no dependencies.** The app is 270 KB and the installer 400 KB. It uses .NET Framework 4.7.2 or later, which is built into Windows 10 (April 2018 Update and later) and Windows 11.
 - **No admin rights needed.** Installs and runs as your normal user.
 - **No telemetry.** No analytics, tracking or update checks. UnplugLock never connects to the internet, so nothing about you or your laptop is sent anywhere, and its settings stay on your laptop.
