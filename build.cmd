@@ -6,7 +6,7 @@ set CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe
 if not exist "%CSC%" set CSC=%WINDIR%\Microsoft.NET\Framework\v4.0.30319\csc.exe
 set ROOT=%~dp0
 rem must match Version in UnplugLock.cs
-set VERSION=1.4.1
+set VERSION=1.5.0
 set SETUP=UnplugLock-Setup-v%VERSION%.exe
 set ARGS=/nologo /codepage:65001 /target:winexe /optimize+ /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Core.dll
 

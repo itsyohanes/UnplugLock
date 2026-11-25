@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- asInvoker, otherwise Windows asks for admin because of "Setup" in the name -->
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
-  <assemblyIdentity version="1.4.1.0" name="UnplugLock.Setup"/>
+  <assemblyIdentity version="1.5.0.0" name="UnplugLock.Setup"/>
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
     <security>
       <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
