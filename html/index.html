@@ -125,6 +125,14 @@
       <a href="#how">How it works</a>
       <a href="#questions">Questions</a>
       <a href="https://github.com/itsyohanes/UnplugLock" data-umami-event="github" data-umami-event-location="header">GitHub</a>
+      <!-- language picker (rewritten for each language's page by .github/scripts/site-i18n.mjs) -->
+      <details class="lang">
+        <summary aria-label="Language: English"><img src="img/flags/en.svg" alt="" width="21" height="14"><span>EN</span></summary>
+        <ul>
+          <li><a href="/" hreflang="en" lang="en" aria-current="page" data-umami-event="language" data-umami-event-lang="en"><img src="img/flags/en.svg" alt="" width="21" height="14">English</a></li>
+        </ul>
+      </details>
+      <!-- /language picker -->
       <a class="button small" href="https://github.com/itsyohanes/UnplugLock/releases/latest" data-umami-event="download" data-umami-event-location="header">Download</a>
     </nav>
   </header>
@@ -350,6 +358,20 @@
     <p class="wordmark" aria-hidden="true">UnplugLock</p>
   </footer>
   <script>
+    // language picker: close it on a click outside or on Escape
+    (function () {
+      var pick = document.querySelector(".lang");
+      document.addEventListener("click", function (e) {
+        if (pick.open && !pick.contains(e.target)) pick.open = false;
+      });
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && pick.open) {
+          pick.open = false;
+          pick.querySelector("summary").focus();
+        }
+      });
+    })();
+
     // hero laptop: scroll progress (0 at the top of the page, 1 when the laptop unpins)
     // tilts the screen up, pulls the cable out, then shows the lock screen
     (function () {
