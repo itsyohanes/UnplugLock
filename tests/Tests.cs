@@ -98,6 +98,18 @@ namespace UnplugLock.Tests
                 // sign-in check
                 Case("Sign-in: Microsoft account lookup works without a logon attempt", MicrosoftAccountLookup),
 
+                // languages
+                Case("Language: every text the code asks for exists in English", CodeKeysExist),
+                Case("Language: every translation has the English keys and placeholders", TranslationsComplete),
+                Case("Language: the Windows language picks the translation", WindowsLanguagePicked),
+                Case("Language: a saved choice wins, an unknown one follows Windows", SavedLanguageWins),
+                Case("Language: seconds use each language's plural forms", PluralForms),
+                Case("Language: tray tooltips fit in 63 characters", TooltipsFit),
+                Case("Language: the setup picker lists every language by its own name", PickerChoices),
+                Case("Language: the setup picker has a flag for every language", PickerFlags),
+                Case("Language: the recovery file is written in the chosen language", RecoveryFileTranslated),
+                Case("Language: every window builds in every language", WindowsBuildInEveryLanguage),
+
                 // network + icon
                 Case("Network: adapter table reads without error", NetworkTableReads),
                 Case("Icon: renders at every size and writes a valid .ico", IconWrites),
@@ -254,11 +266,14 @@ namespace UnplugLock.Tests
             s.Guard = false;
             s.LockOnEthernet = true;
             s.LockOnWifi = true;
+            s.Language = "de";
             s.Save();
 
             var r = Settings.Load();
             Check(!r.Enabled && r.DelaySeconds == 5 && r.HideIcon && !r.Guard && r.LockOnEthernet && r.LockOnWifi,
                 "all values survive a save and load");
+            Equal("de", r.Language, "language survives a save and load");
+            Equal("de", GetBackup("Language"), "language in the backup");
             Check(r.IsInSync(), "both copies in sync");
             Check((File.GetAttributes(BackupFile) & FileAttributes.Hidden) != 0, "backup is hidden");
         }
@@ -882,6 +897,268 @@ namespace UnplugLock.Tests
         {
             Equal(Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "UnplugLockHelper.exe"),
                 Guard.HelperPath, "helper path");
+        }
+
+        // ---- languages
+
+        private static readonly Regex Placeholder = new Regex(@"\{\d+\}");
+
+        private static string SourceDir
+        {
+            get { return Path.GetFullPath(Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "..")); }
+        }
+
+        // runs body in each language, then goes back to the Windows one
+        private static void InEachLanguage(Action<string> body)
+        {
+            try
+            {
+                foreach (var name in AllLanguages())
+                {
+                    Lang.Use(name);
+                    body(name);
+                }
+            }
+            finally
+            {
+                Lang.Use((string)null);
+            }
+        }
+
+        private static List<string> AllLanguages()
+        {
+            var names = new List<string> { "en" };
+            names.AddRange(Lang.Available);
+            return names;
+        }
+
+        private static void CodeKeysExist()
+        {
+            // Lang.T("Key"), Authorize("Key") and keys picked with ?: are all quoted names like "Menu.Exit"
+            var key = new Regex(@"(?:Lang\.T|Authorize|AuthorizeExisting)\(\s*""(\w+(?:\.\w+)?)""|""([A-Z]\w*\.[A-Z]\w*)""");
+            var groups = new HashSet<string>(); // "Menu", "Pw", ... - so "WScript.Shell" isn't taken for a key
+            foreach (var k in Lang.EnglishTable.Keys)
+                if (k.Contains("."))
+                    groups.Add(k.Substring(0, k.IndexOf('.')));
+            int found = 0;
+            foreach (var file in new[] { "UnplugLock.cs", "Setup.cs" })
+                foreach (Match m in key.Matches(File.ReadAllText(Path.Combine(SourceDir, file))))
+                {
+                    string name = m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value;
+                    if (!m.Groups[1].Success && !groups.Contains(name.Substring(0, name.IndexOf('.'))))
+                        continue;
+                    Check(Lang.EnglishTable.ContainsKey(name), file + " uses \"" + name + "\", which isn't in lang\\en.cs");
+                    found++;
+                }
+            Check(found > 100, "found the texts in the code (" + found + ")");
+            // built from parts in RefreshMenu
+            foreach (var part in new[] { "Online", "Offline", "Unknown" })
+                Check(Lang.EnglishTable.ContainsKey("Power." + part) && Lang.EnglishTable.ContainsKey("Tip." + part), part);
+        }
+
+        private static void TranslationsComplete()
+        {
+            var english = Lang.EnglishTable;
+            foreach (var name in Lang.Available)
+            {
+                var table = Lang.TableFor(name);
+                foreach (var k in english.Keys)
+                    Check(table.ContainsKey(k), name + " has " + k);
+                foreach (var k in table.Keys)
+                {
+                    bool few = k == "Delay.Few" && Lang.PluralOf(name, 3) == "Few";
+                    Check(english.ContainsKey(k) || few, name + ": " + k + " isn't an English key");
+                    Check(table[k].Trim().Length > 0, name + ": " + k + " is empty");
+                    string source = english.ContainsKey(k) ? english[k] : english["Delay.Other"];
+                    Equal(Placeholders(source), Placeholders(table[k]), name + ": placeholders in " + k);
+                }
+                if (Lang.PluralOf(name, 3) == "Few")
+                    Check(table.ContainsKey("Delay.Few"), name + " has Delay.Few");
+            }
+        }
+
+        private static string Placeholders(string text)
+        {
+            var list = new List<string>();
+            foreach (Match m in Placeholder.Matches(text))
+                list.Add(m.Value);
+            list.Sort(StringComparer.Ordinal);
+            return string.Join(" ", list);
+        }
+
+        private static void WindowsLanguagePicked()
+        {
+            var cases = new[]
+            {
+                new[] { "de-AT", "de" }, new[] { "fr-CA", "fr" }, new[] { "pt-PT", "pt" }, new[] { "pt-BR", "pt" },
+                new[] { "zh-CN", "zh-Hans" }, new[] { "zh-SG", "zh-Hans" }, new[] { "zh-TW", "en" },
+                new[] { "id-ID", "id" }, new[] { "th-TH", "th" }, new[] { "uk-UA", "uk" }, new[] { "ja-JP", "ja" },
+                new[] { "en-GB", "en" }, new[] { "tr-TR", "en" },
+            };
+            try
+            {
+                foreach (var c in cases)
+                {
+                    Lang.Use(System.Globalization.CultureInfo.GetCultureInfo(c[0]));
+                    Equal(c[1], Lang.Name, c[0]);
+                }
+                Lang.Use(System.Globalization.CultureInfo.GetCultureInfo("de-DE"));
+                Equal("Jetzt sperren", Lang.T("Menu.LockNow"), "German text");
+                Equal("Version 1.0", Lang.T("Version", "1.0"), "placeholder filled");
+            }
+            finally
+            {
+                Lang.Use((string)null);
+            }
+        }
+
+        private static void SavedLanguageWins()
+        {
+            try
+            {
+                Lang.Use("fr");
+                Equal("fr", Lang.Name, "picked language");
+                Equal("Quitter", Lang.T("Menu.Exit"), "French text");
+                Lang.Use("ZH-HANS");
+                Equal("zh-Hans", Lang.Name, "case doesn't matter");
+                Lang.Use("en");
+                Equal("Exit", Lang.T("Menu.Exit"), "English picked over Windows");
+                Lang.Use("xx");
+                Equal(Lang.WindowsLanguage, Lang.Name, "unknown follows Windows");
+                Lang.Use("");
+                Equal(Lang.WindowsLanguage, Lang.Name, "empty follows Windows");
+                Equal("Nope.Missing", Lang.T("Nope.Missing"), "unknown key shows the key, not a crash");
+            }
+            finally
+            {
+                Lang.Use((string)null);
+            }
+        }
+
+        private static void PluralForms()
+        {
+            var expected = new Dictionary<string, string[]> // 1, 3, 5, 10 seconds
+            {
+                { "en", new[] { "1 second", "3 seconds", "5 seconds", "10 seconds" } },
+                { "ru", new[] { "1 секунда", "3 секунды", "5 секунд", "10 секунд" } },
+                { "uk", new[] { "1 секунда", "3 секунди", "5 секунд", "10 секунд" } },
+                { "pl", new[] { "1 sekunda", "3 sekundy", "5 sekund", "10 sekund" } },
+                { "cs", new[] { "1 sekunda", "3 sekundy", "5 sekund", "10 sekund" } },
+                { "fr", new[] { "1 seconde", "3 secondes", "5 secondes", "10 secondes" } },
+                { "ja", new[] { "1 秒", "3 秒", "5 秒", "10 秒" } },
+            };
+            try
+            {
+                foreach (var e in expected)
+                {
+                    Lang.Use(e.Key);
+                    int[] n = { 1, 3, 5, 10 };
+                    for (int i = 0; i < n.Length; i++)
+                        Equal(e.Value[i], Lang.Seconds(n[i]), e.Key + " " + n[i]);
+                }
+                Equal("Few", Lang.PluralOf("ru", 22), "ru 22");
+                Equal("Other", Lang.PluralOf("ru", 12), "ru 12");
+                Equal("One", Lang.PluralOf("ru", 21), "ru 21");
+            }
+            finally
+            {
+                Lang.Use((string)null);
+            }
+        }
+
+        private static void TooltipsFit()
+        {
+            InEachLanguage(delegate(string name)
+            {
+                Check(Lang.T("Tip.NoSignIn").Length <= 63, name + " Tip.NoSignIn");
+                foreach (var state in new[] { "Tip.On", "Tip.Off" })
+                    foreach (var power in new[] { "Tip.Online", "Tip.Offline", "Tip.Unknown" })
+                    {
+                        string tip = Lang.T(state, Lang.T(power));
+                        Check(tip.Length <= 63, name + ": " + tip + " (" + tip.Length + ")");
+                    }
+            });
+        }
+
+        private static void PickerChoices()
+        {
+            var choices = Lang.Choices();
+            Equal("en", choices[0].Key, "English first");
+            Equal(AllLanguages().Count, choices.Count, "every language listed");
+            var seen = new HashSet<string>();
+            foreach (var c in choices)
+                Check(seen.Add(c.Value), "names are distinct: " + c.Value);
+            Check(seen.Contains("Deutsch") && seen.Contains("日本語") && seen.Contains("Bahasa Indonesia"), "own names");
+        }
+
+        private static void RecoveryFileTranslated()
+        {
+            try
+            {
+                Lang.Use("de");
+                string text = RecoveryCodeDialog.RecoveryFileText("ABCDE-FGHJK", new DateTime(2026, 11, 25));
+                Check(text.StartsWith("UnplugLock-Wiederherstellungscode\r\n\r\nABCDE-FGHJK\r\n"), "title and code");
+                Check(text.Contains("„Kennwort vergessen?“"), "names the German link");
+                Check(text.Contains("25. November 2026"), "German date: " + text);
+
+                Lang.Use("ja");
+                text = RecoveryCodeDialog.RecoveryFileText("ABCDE-FGHJK", new DateTime(2026, 11, 25));
+                Check(text.Contains("2026年11月25日"), "Japanese date: " + text);
+            }
+            finally
+            {
+                Lang.Use((string)null);
+            }
+        }
+
+        // each flag is drawn, fills its box and is more than one colour
+        private static void PickerFlags()
+        {
+            foreach (var choice in Lang.Choices())
+            {
+                using (var bitmap = new Bitmap(30, 20))
+                using (var g = Graphics.FromImage(bitmap))
+                {
+                    g.Clear(Color.Magenta);
+                    Check(Flags.Draw(g, choice.Key, new Rectangle(0, 0, 30, 20)), choice.Key + " has a flag");
+                    var colours = new HashSet<int>();
+                    for (int x = 1; x < 29; x++)
+                        for (int y = 1; y < 19; y++)
+                        {
+                            int c = bitmap.GetPixel(x, y).ToArgb();
+                            Check(c != Color.Magenta.ToArgb(), choice.Key + " flag fills its box");
+                            colours.Add(c);
+                        }
+                    Check(colours.Count > 1, choice.Key + " flag has more than one colour");
+                }
+            }
+            Check(!Flags.Draw(Graphics.FromImage(new Bitmap(1, 1)), "xx", new Rectangle(0, 0, 1, 1)), "no flag for an unknown language");
+        }
+
+        private static void WindowsBuildInEveryLanguage()
+        {
+            var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+            var passwordCtor = typeof(PasswordDialog).GetConstructors(flags)[0];
+            var modes = passwordCtor.GetParameters()[1].ParameterType;
+            InEachLanguage(delegate(string name)
+            {
+                var forms = new List<Form>
+                {
+                    (Form)Activator.CreateInstance(typeof(AboutDialog), true),
+                    (Form)Activator.CreateInstance(typeof(RecoveryCodeDialog), flags, null, new object[] { "ABCDE-FGHJK" }, null),
+                    new SetupForm(),
+                };
+                foreach (var mode in Enum.GetValues(modes))
+                    forms.Add((Form)passwordCtor.Invoke(new object[] { Lang.T("Auth.Exit"), mode, null }));
+                foreach (var f in forms)
+                {
+                    using (f)
+                    {
+                        f.PerformLayout();
+                        Check(f.PreferredSize.Width < 900 && f.PreferredSize.Height < 900, name + " " + f.GetType().Name + " size");
+                    }
+                }
+            });
         }
 
         // ---- network + icon
