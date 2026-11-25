@@ -999,9 +999,11 @@ namespace UnplugLock.Tests
             var cases = new[]
             {
                 new[] { "de-AT", "de" }, new[] { "fr-CA", "fr" }, new[] { "pt-PT", "pt" }, new[] { "pt-BR", "pt" },
-                new[] { "zh-CN", "zh-Hans" }, new[] { "zh-SG", "zh-Hans" }, new[] { "zh-TW", "en" },
+                new[] { "zh-CN", "zh-Hans" }, new[] { "zh-SG", "zh-Hans" }, new[] { "zh-TW", "zh-Hant" },
+                new[] { "zh-HK", "zh-Hant" }, new[] { "zh-MO", "zh-Hant" },
                 new[] { "id-ID", "id" }, new[] { "th-TH", "th" }, new[] { "uk-UA", "uk" }, new[] { "ja-JP", "ja" },
-                new[] { "en-GB", "en" }, new[] { "tr-TR", "en" },
+                new[] { "tr-TR", "tr" }, new[] { "vi-VN", "vi" },
+                new[] { "en-GB", "en" }, new[] { "ar-SA", "en" },
             };
             try
             {
@@ -1054,6 +1056,9 @@ namespace UnplugLock.Tests
                 { "cs", new[] { "1 sekunda", "3 sekundy", "5 sekund", "10 sekund" } },
                 { "fr", new[] { "1 seconde", "3 secondes", "5 secondes", "10 secondes" } },
                 { "ja", new[] { "1 秒", "3 秒", "5 秒", "10 秒" } },
+                { "tr", new[] { "1 saniye", "3 saniye", "5 saniye", "10 saniye" } },
+                { "vi", new[] { "1 giây", "3 giây", "5 giây", "10 giây" } },
+                { "zh-Hant", new[] { "1 秒", "3 秒", "5 秒", "10 秒" } },
             };
             try
             {
