@@ -18,6 +18,11 @@ namespace UnplugLock
         // so "de" covers de-DE, de-AT and de-CH, and "zh-Hans" covers zh-CN and zh-SG (but not
         // zh-TW, which uses Traditional characters and gets English).
         private static readonly Dictionary<string, Func<Dictionary<string, string>>> Languages =
+#if SETUP
+            // setup (built with /define:SETUP) has only English built in, and borrows the other
+            // languages from the app it installs - see SetupLanguages in Setup.cs
+            SetupLanguages.Load();
+#else
             new Dictionary<string, Func<Dictionary<string, string>>>(StringComparer.OrdinalIgnoreCase)
             {
                 { "cs", Czech },
@@ -36,6 +41,7 @@ namespace UnplugLock
                 { "uk", Ukrainian },
                 { "zh-Hans", ChineseSimplified },
             };
+#endif
 
         internal static readonly Dictionary<string, string> EnglishTable = English();
 

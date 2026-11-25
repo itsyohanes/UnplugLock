@@ -22,8 +22,14 @@ rem app
 "%CSC%" %ARGS% /win32icon:"%ROOT%UnplugLock.ico" /out:"%ROOT%UnplugLock.exe" %SRC% || exit /b 1
 echo Built %ROOT%UnplugLock.exe
 
-rem installer (embeds UnplugLock.exe)
-"%CSC%" %ARGS% /main:UnplugLock.SetupProgram /win32icon:"%ROOT%UnplugLock.ico" /win32manifest:"%ROOT%setup.manifest" ^
-  /resource:"%ROOT%UnplugLock.exe",UnplugLock.exe /out:"%ROOT%%SETUP%" ^
-  "%ROOT%Setup.cs" %SRC% || exit /b 1
+rem installer: setup with only English built in (SETUP borrows the other languages from the app),
+rem then the app added onto its end. Setup.cs explains the format.
+set SETUPCORE=%TEMP%\UnplugLock-Setup-%RANDOM%%RANDOM%.exe
+"%CSC%" %ARGS% /define:SETUP /main:UnplugLock.SetupProgram /win32icon:"%ROOT%UnplugLock.ico" ^
+  /win32manifest:"%ROOT%setup.manifest" /out:"%SETUPCORE%" ^
+  "%ROOT%Setup.cs" "%ROOT%UnplugLock.cs" "%ROOT%Lang.cs" "%ROOT%lang\en.cs" || exit /b 1
+"%SETUPCORE%" --pack "%SETUPCORE%" "%ROOT%UnplugLock.exe" "%ROOT%%SETUP%"
+set PACKED=%ERRORLEVEL%
+del "%SETUPCORE%" 2>nul
+if not "%PACKED%"=="0" exit /b 1
 echo Built %ROOT%%SETUP%
