@@ -15,8 +15,8 @@ namespace UnplugLock
     internal static partial class Lang
     {
         // culture name -> table. A Windows language matches its own name or any parent of it,
-        // so "de" covers de-DE, de-AT and de-CH, and "zh-Hans" covers zh-CN and zh-SG (but not
-        // zh-TW, which uses Traditional characters and gets English).
+        // so "de" covers de-DE, de-AT and de-CH, "zh-Hans" covers zh-CN and zh-SG, and "zh-Hant"
+        // covers zh-TW, zh-HK and zh-MO.
         private static readonly Dictionary<string, Func<Dictionary<string, string>>> Languages =
 #if SETUP
             // setup (built with /define:SETUP) has only English built in, and borrows the other
@@ -38,8 +38,11 @@ namespace UnplugLock
                 { "pt", Portuguese },
                 { "ru", Russian },
                 { "th", Thai },
+                { "tr", Turkish },
                 { "uk", Ukrainian },
+                { "vi", Vietnamese },
                 { "zh-Hans", ChineseSimplified },
+                { "zh-Hant", ChineseTraditional },
             };
 #endif
 
@@ -175,7 +178,9 @@ namespace UnplugLock
                 case "ja":
                 case "ko":
                 case "th":
+                case "vi":
                 case "zh-Hans":
+                case "zh-Hant":
                     return "Other"; // no plural forms
                 case "ru":
                 case "uk":
