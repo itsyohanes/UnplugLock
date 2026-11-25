@@ -743,8 +743,14 @@ namespace UnplugLock
                         float u = 2f / 6;
                         Bands(g, 0xA51931, u, 0xF4F5F8, u, 0x2D2A4A, 2 * u, 0xF4F5F8, u, 0xA51931, u);
                         break;
+                    case "tr": Turkey(g); break;
                     case "uk": Stripes(g, false, 0x0057B7, 0xFFD700); break;
+                    case "vi":
+                        Stripes(g, false, 0xDA251D);
+                        Star(g, 1.5f, 1, 0, 0.6f, 0xFFFF00);
+                        break;
                     case "zh-Hans": China(g); break;
+                    case "zh-Hant": Script(g, "繁"); break;
                     default: known = false; break;
                 }
             }
@@ -890,11 +896,36 @@ namespace UnplugLock
         private static void China(Graphics g)
         {
             Stripes(g, false, 0xEE1C25);
-            Star(g, 0.5f, 0.5f, 0, 0.3f);
-            Star(g, 1, 0.2f, 23, 0.1f);
-            Star(g, 1.2f, 0.4f, 46, 0.1f);
-            Star(g, 1.2f, 0.7f, 70, 0.1f);
-            Star(g, 1, 0.9f, 21, 0.1f);
+            Star(g, 0.5f, 0.5f, 0, 0.3f, 0xFFFF00);
+            Star(g, 1, 0.2f, 23, 0.1f, 0xFFFF00);
+            Star(g, 1.2f, 0.4f, 46, 0.1f, 0xFFFF00);
+            Star(g, 1.2f, 0.7f, 70, 0.1f, 0xFFFF00);
+            Star(g, 1, 0.9f, 21, 0.1f, 0xFFFF00);
+        }
+
+        // crescent from two circles, and a star with a point towards it
+        private static void Turkey(Graphics g)
+        {
+            Stripes(g, false, 0xE30A17);
+            Shape(g, 0xFFFFFF, delegate(GraphicsPath p) { p.AddEllipse(0.5f, 0.5f, 1, 1); });
+            Shape(g, 0xE30A17, delegate(GraphicsPath p) { p.AddEllipse(0.725f, 0.6f, 0.8f, 0.8f); });
+            Star(g, 1.6f, 1, -90, 0.25f, 0xFFFFFF);
+        }
+
+        // no national flag for a script used in several places: the character that names it
+        // (繁 for Traditional), as Chinese sites label their script switch
+        private static void Script(Graphics g, string character)
+        {
+            Stripes(g, false, 0xC8102E);
+            FontFamily family;
+            try { family = new FontFamily("Microsoft JhengHei"); }
+            catch (ArgumentException) { family = FontFamily.GenericSansSerif; }
+            using (family)
+            using (var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+                Shape(g, 0xFFFFFF, delegate(GraphicsPath p)
+                {
+                    p.AddString(character, family, (int)FontStyle.Bold, 1.6f, new RectangleF(0, 0.06f, 3, 2), format);
+                });
         }
 
         private static readonly PointF[] StarPoints =
@@ -904,13 +935,13 @@ namespace UnplugLock
             new PointF(-0.9511f, -0.309f), new PointF(-0.2245f, -0.309f),
         };
 
-        private static void Star(Graphics g, float x, float y, float angle, float size)
+        private static void Star(Graphics g, float x, float y, float angle, float size, int color)
         {
             var s = g.Save();
             g.TranslateTransform(x, y);
             g.RotateTransform(angle);
             g.ScaleTransform(size, size);
-            Shape(g, 0xFFFF00, delegate(GraphicsPath p) { p.AddPolygon(StarPoints); });
+            Shape(g, color, delegate(GraphicsPath p) { p.AddPolygon(StarPoints); });
             g.Restore(s);
         }
     }
