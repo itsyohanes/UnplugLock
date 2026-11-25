@@ -14,3 +14,6 @@ desktop.ini
 
 # design sources for the website (the site itself is in html/)
 art-source/
+
+# the built website (.github/scripts/site-i18n.mjs)
+_site/
